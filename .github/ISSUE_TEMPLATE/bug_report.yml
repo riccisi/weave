@@ -1,0 +1,16 @@
+
+name: Bug report
+description: Segnala un problema
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: Cosa succede?, placeholder: Descrivi il bug }
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Riproduzione, placeholder: Passi per riprodurre }
+  - type: input
+    id: version
+    attributes: { label: Versione / commit }
