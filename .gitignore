@@ -1,6 +1,17 @@
+# Node
 node_modules
+npm-debug.log*
+package-lock.json
+
+# Build output
 dist
 .vite
-.DS_Store
 coverage
+
+# Editor
+.idea
+.vscode
+
+# OS
+.DS_Store
 
