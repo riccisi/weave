@@ -100,7 +100,7 @@ export class State {
     // ---------- Public API ----------
 
     /** Subscribe a una chiave o path. */
-    on<T = any>(key: string, fn: (v: T) => void, opts?: { immediate?: boolean }): Unsub {
+    on<T = any>(key: string, fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number }): Unsub {
         const needsPath = key.includes('.') || key.includes('[');
         const attr = needsPath ? this.attribute(key) : this.attrForRead<T>(key);
         return attr.subscribe(fn, opts);

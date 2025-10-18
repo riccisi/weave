@@ -72,15 +72,39 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
      * @param {boolean} [opts.immediate=true] - If true or undefined, the callback is immediately invoked with the current value.
      * @return {Function} A function that can be called to unsubscribe the callback from future notifications.
      **/
-    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean }): Unsub {
-        this.watchers.add(fn);
+    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number }): Unsub {
+        const handler = this.createBufferedHandler(fn, opts?.buffer);
+        this.watchers.add(handler);
         if (!opts || opts.immediate !== false) {
             try {
-                fn(this.get());
+                handler(this.get());
             } catch {
             }
         }
-        return () => this.watchers.delete(fn);
+        return () => {
+            this.watchers.delete(handler);
+            (handler as any).__cancel?.();
+        };
+    }
+
+    private createBufferedHandler(fn: (v: T) => void, buffer?: number): (v: T) => void {
+        if (typeof buffer !== 'number' || buffer <= 0) return fn;
+
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const buffered = (value: T) => {
+            if (timer !== null) clearTimeout(timer);
+            timer = setTimeout(() => {
+                timer = null;
+                fn(value);
+            }, buffer);
+        };
+        (buffered as any).__cancel = () => {
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+        };
+        return buffered;
     }
 
     /**

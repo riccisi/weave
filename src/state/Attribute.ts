@@ -39,7 +39,7 @@ export interface Attribute<T = any> {
      * @param opts.immediate when false, skip the initial push
      * @returns unsubscribe function
      */
-    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean }): Unsub;
+    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number }): Unsub;
 
     /**
      * Whether this attribute supports writes.

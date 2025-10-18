@@ -1,5 +1,5 @@
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { State } from '../src/state/State';
 import { registerGlobalMapper, resetGlobalStateConfig } from '../src/state/StateConfig';
 
@@ -20,6 +20,31 @@ describe('Basics: mutable properties', () => {
     expect(seen).toEqual([]);
     s.n = 2;
     expect(seen).toEqual([2]);
+  });
+
+  it('buffers callbacks when buffer option is provided', () => {
+    vi.useFakeTimers();
+    try {
+      const s = new State({ count: 0 });
+      const seen: number[] = [];
+
+      s.on('count', v => seen.push(Number(v)), { buffer: 50 });
+
+      expect(seen).toEqual([]);
+      vi.advanceTimersByTime(50);
+      expect(seen).toEqual([0]);
+
+      s.count = 1;
+      vi.advanceTimersByTime(25);
+      s.count = 2;
+      vi.advanceTimersByTime(25);
+      expect(seen).toEqual([0]);
+
+      vi.advanceTimersByTime(50);
+      expect(seen).toEqual([0, 2]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

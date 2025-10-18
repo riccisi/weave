@@ -69,7 +69,7 @@ export class PathAttribute<T = any> extends AbstractAttribute<T> {
         return final.isWritable();
     }
 
-    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean }) {
+    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number }) {
         const off = super.subscribe(fn, opts);
         if (this.unsubs.length === 0) this.rewire();
         return off;
