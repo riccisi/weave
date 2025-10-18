@@ -1,19 +1,50 @@
+
 name: CI
+
 on:
   push:
+    branches:
+      - main
+      - feat/**
+      - fix/**
+      - chore/**
   pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   node:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build --if-present
-      - run: npm test
+          node-version: ${{ matrix.node-version }}
+          cache: npm
 
+      - name: Install
+        run: npm ci
 
+      # opzionale: eseguito solo se esiste lo script "lint"
+      - name: Lint
+        run: npm run lint --if-present
+
+      # opzionale: eseguito solo se esiste lo script "build"
+      - name: Build
+        run: npm run build --if-present
+
+      - name: Test
+        run: npm test

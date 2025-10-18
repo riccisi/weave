@@ -29,9 +29,9 @@ export class State {
         this.recordSchema(initial);
         this.proxy = this.createProxy();
 
-        const {aliasExprs, deriveds} = this.pass1_buildConcrete(initial);
-        this.pass2_resolveAliases(aliasExprs);
-        this.pass3_createDerived(deriveds);
+        const {aliasExprs, deriveds} = this.buildConcrete(initial);
+        this.resolveAliases(aliasExprs);
+        this.createDerived(deriveds);
 
         return this.proxy;
     }
@@ -63,7 +63,7 @@ export class State {
     }
 
     /** Passo 1: crea attributi concreti; colleziona alias e derivate. */
-    private pass1_buildConcrete(initial: Record<string, any>) {
+    private buildConcrete(initial: Record<string, any>) {
         const aliasExprs: Array<[string, string]> = [];
         const deriveds: Array<[string, (s: State) => any]> = [];
 
@@ -82,7 +82,7 @@ export class State {
     }
 
     /** Passo 2: risolve alias via StateConfig (global). */
-    private pass2_resolveAliases(aliasExprs: Array<[string, string]>) {
+    private resolveAliases(aliasExprs: Array<[string, string]>) {
         for (const [k, raw] of aliasExprs) {
             const expr = raw.match(BRACED)![1];
             const binding = this.resolveAlias(expr);
@@ -91,7 +91,7 @@ export class State {
     }
 
     /** Passo 3: crea attributi derivati. */
-    private pass3_createDerived(deriveds: Array<[string, (s: State) => any]>) {
+    private createDerived(deriveds: Array<[string, (s: State) => any]>) {
         for (const [k, fn] of deriveds) {
             this.attrs.set(k, new DerivedAttribute(k, this._runtime, () => this.public(), fn));
         }
