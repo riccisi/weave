@@ -50,7 +50,7 @@ export class AliasAttribute<T = any, R = T> extends AbstractAttribute<R> {
         return !!this.mapper.write && tgt.isWritable();
     }
 
-    subscribe(fn: (v: R) => void, opts?: { immediate?: boolean, buffer?: number }) {
+    subscribe(fn: (v: R) => void, opts?: { immediate?: boolean, buffer?: number, delay?: number }) {
         if (!this.mapper) return this.target().subscribe(fn as any, opts);
         return this.target().subscribe((tv) => fn(this.mapper!.read(tv as T)), opts);
     }

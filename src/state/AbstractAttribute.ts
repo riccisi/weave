@@ -72,8 +72,11 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
      * @param {boolean} [opts.immediate=true] - If true or undefined, the callback is immediately invoked with the current value.
      * @return {Function} A function that can be called to unsubscribe the callback from future notifications.
      **/
-    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number }): Unsub {
-        const handler = this.createBufferedHandler(fn, opts?.buffer);
+    subscribe(fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number, delay?: number }): Unsub {
+        const handler = this.createDelayedHandler(
+            this.createBufferedHandler(fn, opts?.buffer),
+            opts?.delay
+        );
         this.watchers.add(handler);
         if (!opts || opts.immediate !== false) {
             try {
@@ -105,6 +108,27 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
             }
         };
         return buffered;
+    }
+
+    private createDelayedHandler(fn: (v: T) => void, delay?: number): (v: T) => void {
+        if (typeof delay !== 'number' || delay <= 0) return fn;
+
+        const timers = new Set<ReturnType<typeof setTimeout>>();
+        const delayed = (value: T) => {
+            const timer = setTimeout(() => {
+                timers.delete(timer);
+                fn(value);
+            }, delay);
+            timers.add(timer);
+        };
+        (delayed as any).__cancel = () => {
+            for (const timer of timers) {
+                clearTimeout(timer);
+            }
+            timers.clear();
+            (fn as any).__cancel?.();
+        };
+        return delayed;
     }
 
     /**
