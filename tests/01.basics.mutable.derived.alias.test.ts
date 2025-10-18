@@ -46,6 +46,32 @@ describe('Basics: mutable properties', () => {
       vi.useRealTimers();
     }
   });
+
+  it('delays callbacks when delay option is provided', () => {
+    vi.useFakeTimers();
+    try {
+      const s = new State({ count: 0 });
+      const seen: number[] = [];
+
+      s.on('count', v => seen.push(Number(v)), { delay: 50 });
+
+      expect(seen).toEqual([]);
+      vi.advanceTimersByTime(49);
+      expect(seen).toEqual([]);
+
+      vi.advanceTimersByTime(1);
+      expect(seen).toEqual([0]);
+
+      s.count = 1;
+      vi.advanceTimersByTime(49);
+      expect(seen).toEqual([0]);
+
+      vi.advanceTimersByTime(1);
+      expect(seen).toEqual([0, 1]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('Derived attributes', () => {
