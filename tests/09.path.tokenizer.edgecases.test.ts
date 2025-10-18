@@ -13,7 +13,7 @@ describe('PathTokenizer edge cases', () => {
     });
 
     it('supports escaped quotes inside key', () => {
-        const t = tokenize('settings["weird\\\"key\\\""]');
+        const t = tokenize('settings["weird\\"key\\""]');
         expect(t.rest).toEqual([{ kind: 'mapKey', key: 'weird"key"' }]);
     });
 

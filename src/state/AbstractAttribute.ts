@@ -50,7 +50,7 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
      * @param value The value to be set.
      * @throws {Error} If the attribute is read-only.
      **/
-    set(value: T): void {
+    set(_value: T): void {
         throw new Error(`'${this._key}' is read-only.`);
     }
 
@@ -81,7 +81,8 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
         if (!opts || opts.immediate !== false) {
             try {
                 handler(this.get());
-            } catch {
+            } catch (_error) {
+                // Ignore subscriber errors raised during the initial emission.
             }
         }
         return () => {
@@ -136,14 +137,14 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
      *
      **/
     protected emit(): void {
-        const self = this;
         this.runtime.enqueue({
-            _flushEmit() {
-                const v = self.get();
-                for (const fn of [...self.watchers]) {
+            _flushEmit: () => {
+                const value = this.get();
+                for (const fn of [...this.watchers]) {
                     try {
-                        fn(v);
-                    } catch {
+                        fn(value);
+                    } catch (_error) {
+                        // Swallow subscriber errors so a bad listener doesn't break the flush loop.
                     }
                 }
             }
