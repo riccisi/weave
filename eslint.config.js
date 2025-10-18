@@ -22,8 +22,10 @@ export default [
             parser: tseslint.parser,
             parserOptions: {
                 // Se usi path alias/tsconfig complessi, abilita il Project Service:
-                projectService: true,
-                // tsconfigRootDir: import.meta.dirname,
+                projectService: {
+                    allowDefaultProject: ["eslint.config.js"],
+                },
+                tsconfigRootDir: import.meta.dirname,
                 ecmaVersion: "latest",
                 sourceType: "module",
             },
@@ -40,7 +42,15 @@ export default [
 
             // preferisci la variante TS delle regole
             "no-unused-vars": "off",
-            "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+            "@typescript-eslint/no-unused-vars": [
+                "warn",
+                {
+                    argsIgnorePattern: "^_",
+                    varsIgnorePattern: "^_",
+                    caughtErrors: "all",
+                    caughtErrorsIgnorePattern: "^_",
+                },
+            ],
             "@typescript-eslint/ban-ts-comment": "off",
             "@typescript-eslint/no-explicit-any": "off",
         },

@@ -21,5 +21,10 @@
 //      "@refx/*": ["src/core/*"]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "tests",
+    "eslint.config.js",
+    "vite.config.ts"
+  ]
 }

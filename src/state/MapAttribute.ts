@@ -19,7 +19,7 @@ import type {Unsub} from './Attribute';
  * @template V The type of values stored in the map, defaulting to any.
  * @extends AbstractAttribute
  */
-export class MapAttribute<V = any> extends AbstractAttribute<any> {
+export class MapAttribute extends AbstractAttribute<any> {
 
     public map = new Map<string, any>();
     private proxyObj?: any;
@@ -75,48 +75,32 @@ export class MapAttribute<V = any> extends AbstractAttribute<any> {
     private ensureProxy(): any {
         if (this.proxyObj) return this.proxyObj;
 
-        const self = this;
         const api = {
-            get(key: string) {
-                return self.map.get(key);
-            },
-            set(key: string, value: any) {
-                self.setValue(key, value);
+            get: (key: string) => this.map.get(key),
+            set: (key: string, value: any) => {
+                this.setValue(key, value);
                 return api;
             },
-            delete(key: string) {
-                self.deleteKey(key);
+            delete: (key: string) => {
+                this.deleteKey(key);
                 return api;
             },
-            clear() {
-                self.clearAll();
+            clear: () => {
+                this.clearAll();
                 return api;
             },
-            has(key: string) {
-                return self.map.has(key);
-            },
-            keys() {
-                return self.map.keys();
-            },
-            values() {
-                return self.map.values();
-            },
-            entries() {
-                return self.map.entries();
-            },
-            forEach(cb: (v: any, k: string, m: any) => void, thisArg?: any) {
-                return self.map.forEach(cb, thisArg);
-            },
-            get size() {
-                return self.map.size;
-            },
-            keysRef() {
-                return new MapKeysAttribute(self);
-            },
-            sizeRef() {
-                return new MapSizeAttribute(self);
-            }
-        };
+            has: (key: string) => this.map.has(key),
+            keys: () => this.map.keys(),
+            values: () => this.map.values(),
+            entries: () => this.map.entries(),
+            forEach: (cb: (v: any, k: string, m: any) => void, thisArg?: any) => this.map.forEach(cb, thisArg),
+            keysRef: () => new MapKeysAttribute(this),
+            sizeRef: () => new MapSizeAttribute(this)
+        } as const;
+
+        Object.defineProperty(api, 'size', {
+            get: () => this.map.size
+        });
 
         this.proxyObj = new Proxy(api as any, {
             get: (_t, p) => (api as any)[p as any]
@@ -178,7 +162,7 @@ class MapKeysAttribute extends AbstractAttribute<string[]> {
 
     private off?: Unsub;
 
-    constructor(private parent: MapAttribute<any>) {
+    constructor(private parent: MapAttribute) {
         super(`${parent.key()}:keys`, (parent as any).runtime);
         this.off = parent.subscribe(() => this.emit(), {immediate: false});
     }
@@ -209,7 +193,7 @@ class MapKeysAttribute extends AbstractAttribute<string[]> {
 class MapSizeAttribute extends AbstractAttribute<number> {
     private off?: Unsub;
 
-    constructor(private parent: MapAttribute<any>) {
+    constructor(private parent: MapAttribute) {
         super(`${parent.key()}:size`, (parent as any).runtime);
         this.off = parent.subscribe(() => this.emit(), {immediate: false});
     }

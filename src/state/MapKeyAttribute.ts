@@ -13,7 +13,7 @@ import {MapAttribute} from './MapAttribute';
 export class MapKeyAttribute extends AbstractAttribute<any> {
     private off?: Unsub;
 
-    constructor(private parent: MapAttribute<any>, private keyStr: string) {
+    constructor(private parent: MapAttribute, private keyStr: string) {
         super(`${parent.key()}["${keyStr}"]`, (parent as any).runtime);
         this.off = parent.subscribe(() => this.emit(), {immediate: false});
     }
@@ -33,7 +33,9 @@ export class MapKeyAttribute extends AbstractAttribute<any> {
 
     dispose(): void {
         super.dispose();
-        this.off && this.off();
+        if (this.off) {
+            this.off();
+        }
         this.off = undefined;
     }
 }
