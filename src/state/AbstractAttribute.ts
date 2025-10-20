@@ -65,13 +65,16 @@ export abstract class AbstractAttribute<T = any> implements Attribute<T> {
 
 
     /**
-     * Subscribes a given callback function to be invoked whenever the value changes.
+     * Subscribes a function to be executed whenever the observable state changes.
      *
-     * @param {Function} fn - The callback function to be invoked. It is called with the current value as its parameter.
+     * @param {function(T): void} fn - A function to execute whenever the value changes.
+     *                                 The function receives the new value as its argument.
      * @param {Object} [opts] - Optional configuration options for the subscription.
-     * @param {boolean} [opts.immediate=true] - If true or undefined, the callback is immediately invoked with the current value.
-     * @return {Function} A function that can be called to unsubscribe the callback from future notifications.
-     **/
+     * @param {boolean} [opts.immediate] - If true (default), the function is called immediately with the current value.
+     * @param {number} [opts.buffer] - Number of events to buffer before calling the function.
+     * @param {number} [opts.delay] - Delay in milliseconds before calling the function.
+     * @return {Unsub} A function that, when called, unsubscribes the provided handler.
+     */
     subscribe(fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number, delay?: number }): Unsub {
         const handler = this.createDelayedHandler(
             this.createBufferedHandler(fn, opts?.buffer),
