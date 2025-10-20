@@ -4,6 +4,7 @@ import type { ComponentConfig } from "./Registry";
 import { ComponentRegistry } from "./Registry";
 import type { Layout, LayoutConfig } from "./layouts/Layout";
 import { LayoutRegistry } from "./layouts/LayoutRegistry";
+import { html } from 'uhtml';
 
 export class Container<S extends object = any> extends Component<S> {
     static wtype = "container";
@@ -49,9 +50,8 @@ export class Container<S extends object = any> extends Component<S> {
 
     /** Rende i figli (senza wrapper extra). Il Layout applica le classi al nostro host. */
     protected view() {
-        return (this.items && this.items.length)
-            ? (/* uhtml accetta array di nodi */ this.items.map(c => c.el()))
-            : null;
+        // ogni child è già "montato" off-DOM; qui rendiamo i loro host nel container
+        return html`${this.items.map(c => c.el())}`;
     }
 
     /** Dopo ogni commit di render/apply, applica (o ri-applica) il layout. */
