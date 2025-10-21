@@ -1,13 +1,12 @@
-// stories/TextField.stories.ts
 import type { Meta, StoryObj } from '@storybook/html';
-import { TextField } from '../inputs/TextField';
+import { NumberField } from '../inputs/NumberField';
 
 const meta: Meta = {
-    title: 'Form/TextField',
+    title: 'Form/NumberField',
     render: (args) => {
         const root = document.createElement('div');
-        const tf = new TextField(args);
-        tf.mount(root);
+        const nf = new NumberField(args);
+        nf.mount(root);
         return root;
     },
     argTypes: {
@@ -22,41 +21,31 @@ type Story = StoryObj<Record<string, any>>;
 
 export const Basic: Story = {
     args: {
-        label: 'Your name',
+        label: 'Qty',
         labelMode: 'inline',
-        placeholder: 'Type here',
-        value: '',
+        placeholder: '0',
+        value: 3,
     },
 };
 
-export const Floating: Story = {
+export const MinMax: Story = {
     args: {
-        label: 'Email',
+        label: 'Percent',
         labelMode: 'floating',
-        placeholder: 'john@example.com',
-        value: '',
-        color: 'primary',
+        value: 50,
+        min: 0,
+        max: 100,
+        color: 'info',
     },
 };
 
-export const WithHelperAndValidation: Story = {
+export const Required: Story = {
     args: {
-        label: 'Required field',
+        label: 'Required number',
         labelMode: 'inline',
         required: true,
-        helperText: 'Questo campo è obbligatorio',
-        value: '',
-        color: 'warning',
-    },
-};
-
-export const SizesAndVariants: Story = {
-    args: {
-        label: 'Label',
-        labelMode: 'inline',
-        size: 'lg',
-        variant: 'bordered',
-        color: 'accent',
-        value: 'Preview',
+        value: null,
+        helperText: 'Inserisci un numero',
+        color: 'error',
     },
 };

@@ -1,14 +1,26 @@
-import { render } from "uhtml";
-import { State } from "../state/State";
-import { ReactiveRuntime } from "../state/ReactiveRuntime";
+import { render } from 'uhtml';
+import { State } from '../state/State';
+import { ReactiveRuntime } from '../state/ReactiveRuntime';
 
 export type StateInit = Record<string, any>;
 
+/**
+ * Base class for all Weave components.
+ * - Owns a single, stable DOM host (see `hostTag()`).
+ * - Creates a reactive `State` from the subclass schema (`stateInit` or `schema()`).
+ * - Wires a simple lifecycle: `beforeMount` → render → `afterMount`, and `beforeUnmount` on tear down.
+ * - Schedules re-renders when schema-keys in the state change.
+ *
+ * Subclasses should:
+ * - override `hostTag()` if the semantic root is not a <div> (e.g., Button → <button>).
+ * - implement `view()` returning a uhtml template (or `null`).
+ * - optionally override `schema()` (or provide `stateInit`) to declare reactive keys.
+ */
 export abstract class Component<S extends object = any> {
-
+    /** Reverse lookup: DOM host → component instance. */
     private static _byHost = new WeakMap<HTMLElement, Component>();
 
-    /** Ogni sottoclasse può dichiarare static wtype = '...' per auto-register. */
+    /** Optional short name for registry auto-binding (e.g., 'button', 'container'). */
     static wtype?: string;
 
     protected _state!: State & S;
@@ -16,85 +28,157 @@ export abstract class Component<S extends object = any> {
     protected _mounted = false;
     protected _parentState?: State;
 
-    protected opts: Record<string, any>;
+    /** Raw config passed by the user (used only at construction time). */
+    private readonly _incomingProps: Record<string, any>;
+
+    /** Normalized non-reactive props (everything not in the schema). */
     protected props: Record<string, any> = {};
 
+    /** Unsubscribe handles for state listeners. */
     private _unsubs: Array<() => void> = [];
+
+    /** Microtask render scheduler flag. */
     private _renderQueued = false;
 
+    /** Optional static schema; subclasses may override `schema()` instead. */
     protected stateInit?: StateInit;
 
-    constructor(opts: Record<string, any> = {}) {
-        this.opts = opts;
+    constructor(config: Record<string, any> = {}) {
+        this._incomingProps = config;
     }
 
-    protected schema(): StateInit { return this.stateInit ?? {}; }
-    protected view(): any { return null; }
-    protected hostTag(): string { return "div"; }
+    /** Return the reactive schema for this component (defaults to `stateInit` or empty). */
+    protected schema(): StateInit {
+        return this.stateInit ?? {};
+    }
 
-    protected willMount(): void {}
-    protected didMount(): void {}
-    protected willUnmount(): void {}
+    /** Produce the component template. Keep it pure; no side effects here. */
+    protected view(): any {
+        return null;
+    }
 
-    public state(): State & S { return this._state; }
-    public el(): HTMLElement { return this._host; }
+    /** Tag name for the host element. Override in leaf components (e.g., 'button'). */
+    protected hostTag(): string {
+        return 'div';
+    }
 
+    /** Lifecycle: before the initial render (state/props/host already created). */
+    protected beforeMount(): void {
+        /* no-op */
+    }
+
+    /** Lifecycle: after the first render has committed to the DOM. */
+    protected afterMount(): void {
+        /* no-op */
+    }
+
+    /** Lifecycle: right before removal from the DOM. */
+    protected beforeUnmount(): void {
+        /* no-op */
+    }
+
+    /** Access the reactive state (typed with S). */
+    public state(): State & S {
+        return this._state;
+    }
+
+    /** Access the component host element. */
+    public el(): HTMLElement {
+        return this._host;
+    }
+
+    /** Whether the component has been mounted. */
+    public isMounted(): boolean {
+        return this._mounted;
+    }
+
+    /**
+     * Mount the component into a container, optionally inheriting a parent State.
+     * @param target DOM element or selector to attach to.
+     * @param parent a Component or a State that becomes the parent state for this component.
+     */
     public mount(target: Element | string, parent?: Component | State): this {
         if (this._mounted) return this;
-        const container = typeof target === "string" ? document.querySelector(target)! : target;
-        if (!container) throw new Error("Mount target not found");
 
+        const container =
+            typeof target === 'string' ? (document.querySelector(target) as HTMLElement | null) : (target as HTMLElement | null);
+        if (!container) throw new Error('Mount target not found');
+
+        // Parent state resolution
         if (parent instanceof Component) this._parentState = parent.state();
         else if (parent) this._parentState = parent;
 
-        const { stateOverrides, props } = this.splitOptions(this.opts, this.schema());
+        // Split incoming config into state overrides (keys in schema) and plain props
+        const baseSchema = this.schema();
+        const { stateOverrides, props } = this.splitOptions(this._incomingProps, baseSchema);
         this.props = props;
 
-        const runtime = (this._parentState as any)?._runtime as ReactiveRuntime | undefined;
-        const base = this.schema();
-        const init = { ...base, ...stateOverrides };
-        this._state = new State(init, this._parentState, runtime) as State & S;
+        // Create reactive state inheriting the parent runtime
+        const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime as ReactiveRuntime | undefined;
+        const initial = { ...baseSchema, ...stateOverrides };
+        this._state = new State(initial, this._parentState, runtime) as State & S;
 
+        // Create host and apply className prop (if any)
         this._host = document.createElement(this.hostTag());
-        if (typeof this.opts.className === "string") this._host.className = this.opts.className;
+        if (typeof this.props.className === 'string') this._host.className = this.props.className;
 
-        this.willMount();
-        for (const key of Object.keys(base)) {
+        // Lifecycle hook
+        this.beforeMount();
+
+        // Subscribe to declared schema keys for re-render (no immediate fire)
+        for (const key of Object.keys(baseSchema)) {
             this._unsubs.push(this._state.on(key, () => this.requestRender(), { immediate: false }));
         }
 
+        // Attach to DOM and render once
         container.appendChild(this._host);
         this.doRender();
         this._mounted = true;
-        this.didMount();
+
+        // Lifecycle hook
+        this.afterMount();
+
+        // Reverse lookup map
         Component._byHost.set(this._host, this);
         return this;
     }
 
+    /**
+     * Unmount the component, calling `beforeUnmount()`, removing listeners,
+     * and detaching the host from the DOM.
+     */
     public unmount(): void {
         if (!this._mounted) return;
-        this.willUnmount();
+
+        this.beforeUnmount();
+
         for (const off of this._unsubs) off();
         this._unsubs = [];
+
         if (this._host.parentElement) this._host.parentElement.removeChild(this._host);
         Component._byHost.delete(this._host);
+
         this._mounted = false;
     }
 
-    /** Trova l’istanza Weave a partire da un nodo host (se esiste). */
+    /** Find a component instance from a DOM node, if any. */
     public static fromElement(el: Element | null): Component | undefined {
         return el ? Component._byHost.get(el as HTMLElement) : undefined;
     }
 
-    /** Anima (usando le classi Tailwind/Flyon) e poi chiama unmount(). */
+    /**
+     * Animate removal (using Tailwind/Flyon classes already present in CSS build)
+     * and then unmount the component.
+     * The host should have transition utilities available to get a smooth exit.
+     */
     public requestRemove(opts: { timeoutMs?: number } = {}): void {
         const host = this._host;
         if (!host) return;
 
-        // Le classi 'removing:*' devono già essere presenti nel template per farle generare a Tailwind.
+        // 'removing' class should be present in CSS (so Tailwind can generate it).
         host.classList.add('removing');
 
-        // Assicura una transizione sul host (se non l’hai già nel template puoi aggiungere queste classi globalmente)
+        // Ensure a transition exists (in case template didn't include one)
         host.classList.add('transition', 'duration-300', 'ease-in-out');
 
         const done = () => this.unmount();
@@ -111,9 +195,15 @@ export abstract class Component<S extends object = any> {
             }
         };
         host.addEventListener('transitionend', onEnd);
-        setTimeout(() => { if (!fired) { host.removeEventListener('transitionend', onEnd); done(); }}, Math.max(total, safety));
+        setTimeout(() => {
+            if (!fired) {
+                host.removeEventListener('transitionend', onEnd);
+                done();
+            }
+        }, Math.max(total, safety));
     }
 
+    /** Schedule a microtask re-render; coalesces multiple requests in the same tick. */
     protected requestRender(): void {
         if (this._renderQueued) return;
         this._renderQueued = true;
@@ -123,45 +213,56 @@ export abstract class Component<S extends object = any> {
         });
     }
 
+    /** Perform the actual render into the host using uhtml. */
     protected doRender(): void {
         render(this._host, this.view());
     }
 
+    /**
+     * Split raw options into:
+     * - state overrides: keys that belong to the schema (reactive);
+     * - props: everything else (plain, non-reactive).
+     *
+     * Supports a legacy `{ state: {...} }` bag that only applies to schema keys.
+     */
     protected splitOptions(
         opts: Record<string, any>,
         schema: StateInit
     ): { stateOverrides: Partial<S>; props: Record<string, any> } {
-        const keys = new Set(Object.keys(schema));
+        const schemaKeys = new Set(Object.keys(schema));
         const stateOverrides: Record<string, any> = {};
         const props: Record<string, any> = {};
 
-        const legacyState = (opts && typeof opts.state === "object") ? (opts.state as Record<string, any>) : undefined;
-        const srcs: Record<string, any>[] = [];
-        if (legacyState) srcs.push(legacyState);
-        srcs.push(opts);
-
-        const RESERVED = new Set(["wtype", "items", "path"]);
-
-        for (const src of srcs) {
-            for (const [k, v] of Object.entries(src)) {
-                if (k === "state") continue;
-                if (RESERVED.has(k)) continue;
-                if (keys.has(k)) stateOverrides[k] = v;
-                else props[k] = v;
+        // Legacy: options.state overrides only schema keys
+        const legacyState =
+            opts && typeof opts.state === 'object' ? (opts.state as Record<string, any>) : undefined;
+        if (legacyState) {
+            for (const [k, v] of Object.entries(legacyState)) {
+                if (schemaKeys.has(k)) stateOverrides[k] = v;
             }
         }
+
+        // Flat options: schema → state; the rest → props
+        for (const [k, v] of Object.entries(opts)) {
+            if (k === 'state') continue;
+            if (schemaKeys.has(k)) stateOverrides[k] = v;
+            else props[k] = v;
+        }
+
         return { stateOverrides: stateOverrides as Partial<S>, props };
     }
 
+    // ---- internal helpers -----------------------------------------------------
+
     private getTransitionTotalMs(el: HTMLElement): number {
         const cs = getComputedStyle(el);
-        const dur = cs.transitionDuration.split(',').map(s => s.trim()).map(this.parseTime);
-        const del = cs.transitionDelay.split(',').map(s => s.trim()).map(this.parseTime);
+        const dur = cs.transitionDuration.split(',').map((s) => s.trim()).map(this.parseTime);
+        const del = cs.transitionDelay.split(',').map((s) => s.trim()).map(this.parseTime);
         const pairs = dur.map((d, i) => d + (del[i] ?? 0));
         return pairs.length ? Math.max(...pairs) : 0;
     }
 
     private parseTime(s: string): number {
-        return s.endsWith('ms') ? +s.slice(0,-2) : s.endsWith('s') ? +s.slice(0,-1)*1000 : 0;
+        return s.endsWith('ms') ? +s.slice(0, -2) : s.endsWith('s') ? +s.slice(0, -1) * 1000 : 0;
     }
 }

@@ -1,26 +1,20 @@
+// src/ui/Alert.ts
 import { html } from 'uhtml';
 import { Component, StateInit } from './Component';
-import { ComponentRegistry } from './Registry';
-import { Button } from './Button'; // <— usiamo il Button esistente
-import type { Component as BaseComponent } from './Component';
-import type { ComponentConfig } from './Registry';
+import { ComponentRegistry, type ComponentConfig } from './Registry';
+import { Button } from './Button';
 
 type FlyonColor =
-    | 'default'
-    | 'primary'
-    | 'secondary'
-    | 'info'
-    | 'success'
-    | 'warning'
-    | 'error';
+    | 'default' | 'primary' | 'secondary'
+    | 'info'    | 'success'  | 'warning' | 'error';
 
 type Variant = 'solid' | 'soft' | 'outline';
 
-// Accettiamo vari formati per un’azione
+/** Formati supportati per definire un'action dell'Alert. */
 export type AlertActionConfig =
-    | Button                             // istanza già pronta
-    | (ComponentConfig & { wtype: 'button' }) // config con wtype
-    | Record<string, any>;               // opzioni flat del Button
+    | Button                                   // istanza già creata
+    | (ComponentConfig & { wtype: 'button' })  // config con wtype
+    | Record<string, any>;                     // opzioni flat per Button
 
 export interface AlertState {
     variant: Variant;
@@ -30,31 +24,30 @@ export interface AlertState {
     message: string | null;
     list: string[] | null;
 
+    /** class string completa per l’icona (es. 'icon-[tabler--info-circle] size-6 shrink-0') */
     icon: string | null;
 
+    /** Se true, mostra la X e abilita rimozione animata. */
     dismissible: boolean;
     closeLabel: string;
 
+    /** Imposta layout responsive (colonna su small). */
     responsive: boolean;
-
-    // NOTE: le azioni NON stanno nello state reattivo:
-    // diventano sotto-componenti Button (schema già gestito da Button)
-}
-
-let _idSeq = 0;
-function uid() {
-    _idSeq += 1;
-    return `alert-${_idSeq}`;
 }
 
 /**
- * FlyonUI Alert component con actions renderizzate come veri <Button>.
+ * FlyonUI Alert
+ * - Host = <div role="alert"> (nessun wrapper extra nel template).
+ * - Classi/attributi applicati sul host in modo differenziale.
+ * - Le actions sono istanze di Button montate off-DOM.
  */
 export class Alert extends Component<AlertState> {
     static wtype = 'alert';
 
-    private _id = uid();
-    private _buttons: Button[] = []; // sotto-componenti azione
+    /** track delle classi applicate da Alert per non toccare classi esterne */
+    private _appliedClasses: Set<string> = new Set();
+    /** sotto-componenti azione (Button) */
+    private _buttons: Button[] = [];
 
     protected stateInit: StateInit = {
         variant: 'solid',
@@ -65,56 +58,53 @@ export class Alert extends Component<AlertState> {
         icon: null,
         dismissible: false,
         closeLabel: 'Close',
-        responsive: false
+        responsive: false,
     };
 
-    protected willMount(): void {
-        // Normalizza le actions dal props in una lista di Button
+    /** Normalizza actions → Button e li monta off-DOM per ereditarne lo state. */
+    protected beforeMount(): void {
         const raw = this.props.actions as AlertActionConfig[] | undefined;
-        if (!raw || raw.length === 0) return;
+        if (!raw?.length) return;
 
-        this._buttons = raw.map((item) => this.toButton(item));
-        // Montiamo i Button su un contenitore temporaneo; poi in view() useremo i loro .el()
+        this._buttons = raw.map((cfg) => this.toButton(cfg));
         for (const btn of this._buttons) {
-            const tmp = document.createElement('div');
-            btn.mount(tmp, this.state()); // eredita lo state per alias e derivate
+            const staging = document.createElement('div');
+            btn.mount(staging, this.state());
         }
     }
 
-    public unmount(): void {
-        // cleanup dei sotto-componenti
+    /** Pulizia dei sotto-componenti al teardown. */
+    protected beforeUnmount(): void {
         for (const b of this._buttons) b.unmount();
         this._buttons = [];
-        super.unmount();
     }
 
+    /** Converte qualsiasi formato supportato in un Button istanziato. */
     private toButton(cfg: AlertActionConfig): Button {
         if (cfg instanceof Button) return cfg;
         if ((cfg as any)?.wtype === 'button') {
-            // usa il registry per istanziare via wtype
             const comp = ComponentRegistry.create(cfg as ComponentConfig);
             if (!(comp instanceof Button)) {
-                throw new Error(`Alert action wtype non è Button: ${(cfg as any).wtype}`);
+                throw new Error(`Alert action wtype non è 'button': ${(cfg as any).wtype}`);
             }
             return comp;
         }
-        // oggetto flat → passa direttamente al costruttore Button
         return new Button({ ...(cfg as Record<string, any>) });
     }
 
+    /** Applica classi/attributi al host e rende contenuto interno. */
     protected view() {
         const s = this.state();
+        const host = this.el();
 
-        // classi base + variante
+        // --- classi del host (solo quelle “nostre”) ---------------------------------
         const classes = new Set<string>(['alert']);
-        switch (s.variant) {
-            case 'soft': classes.add('alert-soft'); break;
-            case 'outline': classes.add('alert-outline'); break;
-            case 'solid':
-            default: break;
-        }
 
-        // colore semantico
+        // variante
+        if (s.variant === 'soft') classes.add('alert-soft');
+        else if (s.variant === 'outline') classes.add('alert-outline');
+
+        // colore
         const COLOR: Record<FlyonColor, string | null> = {
             default: null,
             primary: 'alert-primary',
@@ -127,29 +117,14 @@ export class Alert extends Component<AlertState> {
         const c = COLOR[s.color];
         if (c) classes.add(c);
 
-        // layout opzionale (responsive come negli esempi FlyonUI)
-        const contentWrap = s.icon || this._buttons.length || s.title || s.list || s.responsive;
-        const containerFlex =
-            contentWrap && s.responsive
-                ? 'flex items-start max-sm:flex-col max-sm:items-center gap-4'
-                : contentWrap
-                    ? 'flex items-start gap-4'
-                    : '';
+        // layout (responsive & spaziature simili agli esempi Flyon)
+        const needsWrap = s.icon || this._buttons.length || s.title || s.list || s.responsive;
+        if (needsWrap) {
+            if (s.responsive) classes.add('max-sm:flex-col'), classes.add('max-sm:items-center');
+            classes.add('flex'), classes.add('items-start'), classes.add('gap-4');
+        }
 
-        // contenuti
-        const title = s.title ? html`<h5 class="text-lg font-semibold">${s.title}</h5>` : null;
-        const message = s.message && !s.list ? html`<p>${s.message}</p>` : null;
-        const list = s.list && s.list.length
-            ? html`<ul class="mt-1.5 list-inside list-disc">
-          ${s.list.map((li) => html`<li>${li}</li>`)}
-        </ul>`
-            : null;
-
-        // wrapper testuale
-        const textCol = (title || list)
-            ? html`<div class="flex flex-col gap-1">${title} ${message} ${list}</div>`
-            : html`${message}`;
-
+        // dismissible: classi per animazione di uscita (devono esistere a build-time)
         if (s.dismissible) {
             classes.add('transition');
             classes.add('duration-300');
@@ -158,41 +133,52 @@ export class Alert extends Component<AlertState> {
             classes.add('removing:translate-x-5');
         }
 
-        // pulsante di chiusura (senza spread attributi)
+        // extra className da props
+        const extra = typeof this.props.className === 'string'
+            ? this.props.className.split(/\s+/).filter(Boolean)
+            : [];
+        for (const e of extra) classes.add(e);
+
+        // diff classes sul host (non rimuovere classi esterne es. join-item)
+        for (const cls of this._appliedClasses) host.classList.remove(cls);
+        for (const cls of classes) host.classList.add(cls);
+        this._appliedClasses = classes;
+
+        // attributi host
+        host.setAttribute('role', 'alert');
+
+        // --- contenuti --------------------------------------------------------------
+        const iconEl = s.icon ? html`<span class=${s.icon}></span>` : null;
+
+        const titleEl = s.title ? html`<h5 class="text-lg font-semibold">${s.title}</h5>` : null;
+        const messageEl = s.message && !s.list ? html`<p>${s.message}</p>` : null;
+        const listEl = s.list?.length
+            ? html`<ul class="mt-1.5 list-inside list-disc">${s.list.map((li) => html`<li>${li}</li>`)}</ul>`
+            : null;
+
+        const textCol = (titleEl || listEl)
+            ? html`<div class="flex flex-col gap-1">${titleEl} ${messageEl} ${listEl}</div>`
+            : html`${messageEl}`;
+
+        const actionsEl = this._buttons.length
+            ? html`<div class="mt-4 flex gap-2">${this._buttons.map((b) => b.el())}</div>`
+            : null;
+
         const closeBtn = s.dismissible ? html`
             <button class="ms-auto cursor-pointer leading-none"
                     aria-label=${s.closeLabel}
                     onclick=${(ev: MouseEvent) => {
                         (this.props.onDismiss as ((cmp: Alert, ev: MouseEvent) => void) | undefined)?.(this, ev);
-                        this.requestRemove(); // ← anima e poi unmount() (Alert + Buttons figli)
+                        this.requestRemove(); // anima + unmount (anche dei Button figli)
                     }}>
                 <span class="icon-[tabler--x] size-5"></span>
             </button>
         ` : null;
 
-        // icona (passa tutta la stringa class come espressione unica)
-        const iconEl = s.icon ? html`<span class=${s.icon}></span>` : null;
-
-        // className extra lato props
-        const extra = typeof this.props.className === 'string' ? this.props.className : '';
-        const classAttr =
-            [...classes].join(' ')
-            + (containerFlex ? ` ${containerFlex}` : '')
-            + (extra ? ` ${extra}` : '');
-
-        // azioni: inseriamo direttamente i DOM host dei Button
-        const actionsEl = this._buttons.length
-            ? html`<div class="mt-4 flex gap-2">
-          ${this._buttons.map(b => b.el())}
-        </div>`
-            : null;
-
-        return html`
-      <div id=${this._id} class=${classAttr} role="alert">
-        ${iconEl} ${textCol} ${actionsEl} ${closeBtn}
-      </div>
-    `;
+        // --- render del contenuto interno (host è già il wrapper) -------------------
+        return html`${iconEl} ${textCol} ${actionsEl} ${closeBtn}`;
     }
 }
 
+// Auto-register all’import
 ComponentRegistry.registerClass(Alert);

@@ -14,8 +14,8 @@ const meta = {
         ];
         const c = new Container({
             ...args,
-            items,
-            layout: { type: 'join', orientation: args.orientation, className: args.className }
+            layout: { type: 'join', orientation: args.orientation, className: args.className },
+            items
         });
         return mountComponent(c);
     },
@@ -41,8 +41,8 @@ export const DeepTargetDemo: Story = {
         const b = new Button({ text: 'B', variant: 'outline' });
         const c = new Button({ text: 'C' });
         const container = new Container({
-            items: [a, b, c],
-            layout: { type: 'join', orientation: 'horizontal', deepTarget: true, className: 'rounded-lg' }
+            layout: { type: 'join', orientation: 'horizontal', deepTarget: true, className: 'rounded-lg' },
+            items: [a, b, c]
         });
         return mountComponent(container);
     },

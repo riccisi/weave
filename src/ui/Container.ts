@@ -1,75 +1,112 @@
-import type { State } from "../state/State";
-import { Component, StateInit } from "./Component";
-import type { ComponentConfig } from "./Registry";
-import { ComponentRegistry } from "./Registry";
-import type { Layout, LayoutConfig } from "./layouts/Layout";
-import { LayoutRegistry } from "./layouts/LayoutRegistry";
 import { html } from 'uhtml';
+import { Component, StateInit } from './Component';
+import type { ComponentConfig } from './Registry';
+import { ComponentRegistry } from './Registry';
+import type { Layout, LayoutConfig } from './layouts/Layout';
+import { LayoutRegistry } from './layouts/LayoutRegistry';
 
+/**
+ * Generic container:
+ * - materializza i figli (istanze o config wtype),
+ * - li monta off-DOM per ereditare lo State del parent,
+ * - li rende nella propria view,
+ * - applica un Layout (facoltativo) dopo ogni commit.
+ *
+ * Nessuna classe CSS di default: lo stile del wrapper è responsabilità del Layout.
+ */
 export class Container<S extends object = any> extends Component<S> {
-    static wtype = "container";
+    static wtype = 'container';
 
+    /** Component children (istanze) gestiti dal container */
     protected items: Component[] = [];
+
+    /** Layout applicato al wrapper del container (join, vbox, grid, …) */
     private _layout?: Layout;
+
+    /** Flag per coalescere applyLayout() nella stessa microtask */
     private _layoutScheduled = false;
 
     constructor(props: Record<string, any> = {}) {
         super(props);
-
-        // Normalizza items: istanze o config wtype
-        const incoming = this.props.items as Array<Component | ComponentConfig> | undefined;
-        if (incoming) {
-            this.items = incoming.map((it) => (it instanceof Component ? it : ComponentRegistry.create(it)));
-        }
-
-        // Nessun default className qui: le classi del wrapper le decide il Layout.
     }
 
-    /** Schema reattivo del container (di base vuoto, sovrascrivibile) */
-    protected schema(): StateInit { return this.stateInit ?? {}; }
+    /** Schema reattivo base del container (vuoto salvo override) */
+    protected schema(): StateInit {
+        return this.stateInit ?? {};
+    }
 
-    protected willMount(): void {
-        // 1) Istanzia il Layout (oggetto o config { type: 'join', ... })
-        this._layout = LayoutRegistry.create(this.props.layout as (Layout | LayoutConfig | undefined));
+    /**
+     * Lifecycle: prima del primo render.
+     * - istanzia il layout dalla props (oggetto o { type, ... }),
+     * - normalizza i children (istanze o config) e li monta off-DOM.
+     */
+    protected beforeMount(): void {
+        // 1) Layout
+        this._layout = LayoutRegistry.create(
+            this.props.layout as (Layout | LayoutConfig | undefined)
+        );
 
-        // 2) Monta i figli OFF-DOM (staging). Così hanno un host e lo stato ereditato
-        //    ma non li metti nel DOM: ci penserà la view() del container.
+        // 2) Children: accettiamo `items` (canonico) o `children` (alias ergonomico)
+        const incoming = (this.props.items ?? this.props.children) as
+            | Array<Component | ComponentConfig>
+            | undefined;
+
+        if (!incoming) {
+            this.items = [];
+            return;
+        }
+
+        // materializza istanze
+        this.items = incoming.map((it) =>
+            it instanceof Component ? it : ComponentRegistry.create(it)
+        );
+
+        // mount off-DOM per ereditare state/ctx, senza inserirli ancora nel DOM del container
         for (const child of this.items) {
-            const staging = document.createElement("div");
+            const staging = document.createElement('div');
             child.mount(staging, this.state());
         }
     }
 
-    public mount(target: Element | string, parent?: Component | State): this {
-        super.mount(target, parent);
-        // Non montiamo più i figli QUI dentro l'host (lo fa la view)
-        // Ci limitiamo a rendere: la view() inserirà i child.el()
-        this.requestRender();
-        return this;
-    }
-
-    /** Rende i figli (senza wrapper extra). Il Layout applica le classi al nostro host. */
+    /**
+     * View: inserisce gli host dei figli nel wrapper del container.
+     * Il Layout verrà applicato dopo il commit (doRender()).
+     */
     protected view() {
-        // ogni child è già "montato" off-DOM; qui rendiamo i loro host nel container
-        return html`${this.items.map(c => c.el())}`;
+        return html`${this.items.map((c) => c.el())}`;
     }
 
-    /** Dopo ogni commit di render/apply, applica (o ri-applica) il layout. */
+    /**
+     * Dopo ogni commit: prima render, poi applicazione layout (idempotente).
+     */
     protected doRender(): void {
+        super.doRender();
         this.applyLayout();
     }
 
-    /** Aggiunge un figlio: mount off-DOM + re-render + layout */
+    // -------------------------------------------------------------------------
+    //  API dinamiche (add/remove) con coalescing del layout
+    // -------------------------------------------------------------------------
+
+    /**
+     * Aggiunge un figlio.
+     * - monta off-DOM (eredita lo state subito),
+     * - chiede re-render e applyLayout coalescato.
+     */
     public add(child: Component): this {
         this.items.push(child);
-        const staging = document.createElement("div");
+        const staging = document.createElement('div');
         child.mount(staging, this.state());
         this.requestRender();
         this.requestLayout();
         return this;
     }
 
-    /** Rimuove un figlio: unmount + re-render + layout */
+    /**
+     * Rimuove un figlio:
+     * - unmount del figlio,
+     * - re-render e applyLayout coalescato.
+     */
     public remove(child: Component): this {
         const idx = this.items.indexOf(child);
         if (idx >= 0) {
@@ -81,7 +118,10 @@ export class Container<S extends object = any> extends Component<S> {
         return this;
     }
 
-    /** Coalesca le richieste di layout nella stessa microtask. */
+    /**
+     * Coalesca le richieste di layout nella stessa microtask.
+     * Utile quando arrivano più add/remove consecutivi.
+     */
     protected requestLayout(): void {
         if (this._layoutScheduled) return;
         this._layoutScheduled = true;
@@ -91,7 +131,8 @@ export class Container<S extends object = any> extends Component<S> {
         });
     }
 
-    private applyLayout() {
+    /** Applica (o ri-applica) il layout in modo idempotente. */
+    protected applyLayout(): void {
         if (!this._layout) return;
         const host = this.el();
         if (!host) return;
@@ -99,12 +140,17 @@ export class Container<S extends object = any> extends Component<S> {
             host,
             children: this.items,
             state: this.state(),
-            props: this.props
+            props: this.props,
         });
     }
 
-    public unmount(): void {
-        // Prima lascia che il layout “ripulisca” (ha ancora accesso ai child nel DOM)
+    /**
+     * Lifecycle: prima dello smontaggio.
+     * - consente al layout di ripulire classi/effetti,
+     * - smonta tutti i figli,
+     * - poi delega al super per rimuovere l'host.
+     */
+    public beforeUnmount(): void {
         if (this._layout) {
             const host = this.el();
             if (host) {
@@ -112,16 +158,12 @@ export class Container<S extends object = any> extends Component<S> {
                     host,
                     children: this.items,
                     state: this.state(),
-                    props: this.props
+                    props: this.props,
                 });
             }
         }
-        // Poi smonta i figli
         for (const child of this.items) child.unmount();
-
-        super.unmount();
     }
 }
 
-// AUTO-REGISTER all’import del modulo
 ComponentRegistry.registerClass(Container);

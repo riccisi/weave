@@ -1,16 +1,8 @@
+// src/ui/Progress.ts
 import { html } from 'uhtml';
 import { Component, StateInit } from './Component';
 import { ComponentRegistry } from './Registry';
-
-type FlyonColor =
-    | 'default'
-    | 'primary'
-    | 'secondary'
-    | 'accent'
-    | 'info'
-    | 'success'
-    | 'warning'
-    | 'error';
+import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Orientation = 'horizontal' | 'vertical';
 type LabelMode = 'none' | 'inside' | 'end' | 'floating';
@@ -40,18 +32,23 @@ export interface ProgressState {
     /** Testo etichetta (se null viene calcolato come “{pct}%”) */
     labelText: string | null;
 
-    /** Class utilitarie per dimensioni del contenitore (es. w-56 per horizontal, h-56 per vertical) */
+    /** Class utilitarie per dimensioni del contenitore della barra */
     widthClass: string | null;   // usata se orientation = 'horizontal'
     heightClass: string | null;  // usata se orientation = 'vertical'
-    /** Spessore barra: usa class Tailwind h-* (orizz) o w-* (vertical) sul contenitore */
+    /** Spessore barra: Tailwind h-* (orizz) o w-* (vertical) sul contenitore della barra */
     thicknessClass: string | null;
-
-    /** Extra className lato props */
-    // (NB: className non fa parte dello State, appartiene alle props flat)
 }
 
+/**
+ * FlyonUI Progress
+ * - Host = wrapper; la barra è sempre un `div.progress` interno con `role="progressbar"`.
+ * - Classi/attributi host applicati in diff per non toccare classi esterne (es. join-item).
+ * - Label: inside / end / floating come documentazione Flyon.
+ */
 export class Progress extends Component<ProgressState> {
     static wtype = 'progress';
+
+    private _appliedHostClasses: Set<string> = new Set();
 
     protected stateInit: StateInit = {
         value: 50,
@@ -64,11 +61,12 @@ export class Progress extends Component<ProgressState> {
         indeterminate: false,
         labelMode: 'none',
         labelText: null,
-        widthClass: 'w-56',   // esempio come in docs
-        heightClass: 'h-56',  // per vertical
+        widthClass: 'w-56',
+        heightClass: 'h-56',
         thicknessClass: null,
     };
 
+    /** Calcola la percentuale 0..100 (clamped) o null per indeterminate. */
     private pct(): number | null {
         const s = this.state();
         if (s.indeterminate || s.value == null) return null;
@@ -79,122 +77,105 @@ export class Progress extends Component<ProgressState> {
 
     protected view() {
         const s = this.state();
+        const host = this.el();
 
-        // contenitore: classi base + direzione + dimensioni
-        const container = new Set<string>(['progress']);
-        if (s.orientation === 'vertical') container.add('progress-vertical');
-        else container.add('progress-horizontal'); // è la default nei docs, esplicitiamo
+        // --- classi del contenitore della barra (NON l’host) --------------------
+        const barContainer = new Set<string>(['progress']);
+        if (s.orientation === 'vertical') barContainer.add('progress-vertical');
+        else barContainer.add('progress-horizontal');
 
-        // dimensioni
         if (s.orientation === 'horizontal') {
-            if (s.widthClass) container.add(s.widthClass);
+            if (s.widthClass) barContainer.add(s.widthClass);
         } else {
-            if (s.heightClass) container.add(s.heightClass);
+            if (s.heightClass) barContainer.add(s.heightClass);
         }
-        if (s.thicknessClass) container.add(s.thicknessClass);
+        if (s.thicknessClass) barContainer.add(s.thicknessClass);
 
-        // barra: classi base + colore + varianti
+        // --- classi della barra vera e propria ----------------------------------
         const bar = new Set<string>(['progress-bar']);
-        const COLOR: Record<FlyonColor, string | null> = {
-            default: null,
-            primary: 'progress-primary',
-            secondary: 'progress-secondary',
-            accent: 'progress-accent',
-            info: 'progress-info',
-            success: 'progress-success',
-            warning: 'progress-warning',
-            error: 'progress-error',
-        };
-        const colorClass = COLOR[s.color];
-        if (colorClass) bar.add(colorClass);
+        const colorCls = FlyonColorClasses.progress(s.color);
+        if (colorCls) bar.add(colorCls);
         if (s.striped) bar.add('progress-striped');
         if (s.animated) bar.add('progress-animated');
         if (s.indeterminate || s.value == null) bar.add('progress-indeterminate');
 
-        // stile dimensione della barra (width o height percentuale)
+        // --- stile width/height in base all’orientamento ------------------------
         const pct = this.pct();
         const barStyle =
             pct == null
                 ? ''
-                : (s.orientation === 'horizontal'
+                : s.orientation === 'horizontal'
                     ? `width:${pct}%`
-                    : `height:${pct}%`);
+                    : `height:${pct}%`;
 
-        // ARIA
-        const ariaNow   = pct == null ? undefined : String(Math.round(pct));
+        // --- ARIA (sul div.progress) --------------------------------------------
+        const ariaNow = pct == null ? undefined : String(Math.round(pct));
         const ariaLabel =
-            (this.props.ariaLabel as string | undefined)
-            ?? (pct == null ? 'Loading' : `${Math.round(pct)}% Progressbar`);
+            (this.props.ariaLabel as string | undefined) ??
+            (pct == null ? 'Loading' : `${Math.round(pct)}% Progressbar`);
 
-        // class extra props
-        const extra = typeof this.props.className === 'string' ? this.props.className : '';
-        const containerClass = [...container].join(' ') + (extra ? ` ${extra}` : '');
-        const barClass = [...bar].join(' ');
+        // --- label text ----------------------------------------------------------
+        const labelText = s.labelText ?? (pct == null ? '' : `${Math.round(pct)}%`);
 
-        // Label: calcolo testo se non fornito
-        const labelText =
-            s.labelText ?? (pct == null ? '' : `${Math.round(pct)}%`);
+        // --- host classes (wrapper) in diff -------------------------------------
+        const hostClasses = new Set<string>();
+        // layout extra per label 'end' e 'floating'
+        if (s.labelMode === 'end') {
+            hostClasses.add('flex');
+            hostClasses.add('items-center');
+            hostClasses.add('gap-3');
+        } else if (s.labelMode === 'floating') {
+            hostClasses.add('relative');
+        }
+        // merge extra from props.className
+        const extra = typeof this.props.className === 'string'
+            ? this.props.className.split(/\s+/).filter(Boolean)
+            : [];
+        for (const e of extra) hostClasses.add(e);
 
-        // Template per barra + label inside
-        const innerBar =
+        // apply diff (non tocchiamo classi esterne non applicate da noi)
+        for (const c of this._appliedHostClasses) host.classList.remove(c);
+        for (const c of hostClasses) host.classList.add(c);
+        this._appliedHostClasses = hostClasses;
+
+        // --- inner DOM -----------------------------------------------------------
+        // barra: con label inside (se richiesta)
+        const barInner =
             s.labelMode === 'inside' && pct != null
-                ? html`<div class=${barClass} style=${barStyle}><span class="font-normal">${labelText}</span></div>`
-                : html`<div class=${barClass} style=${barStyle}></div>`;
+                ? html`<div class=${[...bar].join(' ')} style=${barStyle}>
+                <span class="font-normal">${labelText}</span>
+              </div>`
+                : html`<div class=${[...bar].join(' ')} style=${barStyle}></div>`;
 
-        // Varianti: end/floating richiedono wrapper per label
-        if (s.labelMode === 'end' && pct != null) {
-            // progress + label a destra
-            return html`
-                <div class="flex items-center gap-3">
-                    <div class=${containerClass}
-                         role="progressbar"
-                         aria-label=${ariaLabel}
-                         aria-valuemin=${String(s.min)}
-                         aria-valuemax=${String(s.max)}
-                         aria-valuenow=${ariaNow}>
-                        ${innerBar}
-                    </div>
-                    <span class="text-sm tabular-nums">${labelText}</span>
-                </div>
-            `;
-        }
-
-        if (s.labelMode === 'floating' && pct != null) {
-            // wrapper relativo + label “progress-label” posizionata con left/bottom in %
-            const floatStyle =
-                s.orientation === 'horizontal'
-                    ? `position:absolute;left:${pct}%;transform:translateX(-50%);`
-                    : `position:absolute;bottom:${pct}%;transform:translateY(50%);`;
-            const posClasses =
-                s.orientation === 'horizontal'
-                    ? 'progress-label absolute start-0'
-                    : 'progress-label absolute start-0'; // manteniamo semantica base; pos via style
-            return html`
-        <div class="relative">
-          <div class=${containerClass}
-               role="progressbar"
-               aria-label=${ariaLabel}
-               aria-valuemin=${String(s.min)}
-               aria-valuemax=${String(s.max)}
-               aria-valuenow=${ariaNow}>
-            ${innerBar}
-          </div>
-          <span class=${posClasses} style=${floatStyle}>${labelText}</span>
-        </div>
-      `;
-        }
-
-        // Default: nessuna label o inside già gestita
-        return html`
-      <div class=${containerClass}
+        // contenitore barra con ARIA
+        const progressEl = html`
+      <div class=${[...barContainer].join(' ')}
            role="progressbar"
            aria-label=${ariaLabel}
            aria-valuemin=${String(s.min)}
            aria-valuemax=${String(s.max)}
            aria-valuenow=${ariaNow}>
-        ${innerBar}
+        ${barInner}
       </div>
     `;
+
+        // label modes: end | floating | none/inside
+        if (s.labelMode === 'end' && pct != null) {
+            return html`${progressEl}<span class="text-sm tabular-nums">${labelText}</span>`;
+        }
+
+        if (s.labelMode === 'floating' && pct != null) {
+            const floatStyle =
+                s.orientation === 'horizontal'
+                    ? `position:absolute;left:${pct}%;transform:translateX(-50%);`
+                    : `position:absolute;bottom:${pct}%;transform:translateY(50%);`;
+            // posizionamento base (left/start allineato; stile rifinisce)
+            return html`${progressEl}
+        <span class="progress-label absolute start-0" style=${floatStyle}>${labelText}</span>`;
+        }
+
+        // default: none / inside
+        return html`${progressEl}`;
     }
 }
 

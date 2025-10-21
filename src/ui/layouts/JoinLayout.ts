@@ -37,6 +37,8 @@ export class JoinLayout implements Layout {
             this.className.split(/\s+/).forEach(c => c && host.classList.add(c));
         }
 
+        console.log(children.map(c => c.el()))
+
         // Assicura 'join-item' sui figli (host o joinTarget)
         for (const c of children) {
             const target =
