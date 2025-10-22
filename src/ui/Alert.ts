@@ -120,8 +120,13 @@ export class Alert extends Component<AlertState> {
         // layout (responsive & spaziature simili agli esempi Flyon)
         const needsWrap = s.icon || this._buttons.length || s.title || s.list || s.responsive;
         if (needsWrap) {
-            if (s.responsive) classes.add('max-sm:flex-col'), classes.add('max-sm:items-center');
-            classes.add('flex'), classes.add('items-start'), classes.add('gap-4');
+            if (s.responsive) {
+                classes.add('max-sm:flex-col');
+                classes.add('max-sm:items-center');
+                classes.add('flex');
+                classes.add('items-start');
+                classes.add('gap-4');
+            }
         }
 
         // dismissible: classi per animazione di uscita (devono esistere a build-time)

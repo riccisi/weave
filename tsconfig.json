@@ -15,7 +15,7 @@
     "paths": {
 //      "@core/*": ["src/core/*"],
       "@state/*": ["src/state/*"],
-//      "@ui/*": ["src/ui/*"],
+      "@ui/*": ["src/ui/*"],
 //      "@form/*": ["src/form/*"],
 //      "@validation/*": ["src/validation/*"],
 //      "@refx/*": ["src/core/*"]
