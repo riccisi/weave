@@ -1,5 +1,5 @@
 import { html } from 'uhtml';
-import { Component, StateInit } from './Component';
+import { Component } from './Component';
 import type { ComponentConfig } from './Registry';
 import { ComponentRegistry } from './Registry';
 import type { Layout, LayoutConfig } from './layouts/Layout';
@@ -26,6 +26,12 @@ export class Container<S extends object = any> extends Component<S> {
     /** Flag per coalescere applyLayout() nella stessa microtask */
     private _layoutScheduled = false;
 
+    /** Snapshot degli state.disabled dei figli quando il container li forza. */
+    private _disabledSnapshots = new WeakMap<Component, boolean>();
+
+    /** Unsubscribe dal listener che propaga disabled ai figli. */
+    private _disabledCascadeUnsub?: () => void;
+
     constructor(props: Record<string, any> = {}) {
         super(props);
     }
@@ -46,21 +52,26 @@ export class Container<S extends object = any> extends Component<S> {
             | Array<Component | ComponentConfig>
             | undefined;
 
-        if (!incoming) {
+        if (incoming) {
+            // materializza istanze
+            this.items = incoming.map((it) =>
+                it instanceof Component ? it : ComponentRegistry.create(it)
+            );
+
+            // mount off-DOM per ereditare state/ctx, senza inserirli ancora nel DOM del container
+            for (const child of this.items) {
+                const staging = document.createElement('div');
+                child.mount(staging, this.state());
+            }
+        } else {
             this.items = [];
-            return;
         }
 
-        // materializza istanze
-        this.items = incoming.map((it) =>
-            it instanceof Component ? it : ComponentRegistry.create(it)
+        this._disabledCascadeUnsub = this.state().on(
+            'disabled',
+            (disabled: boolean) => this.cascadeDisabled(disabled),
+            { immediate: true }
         );
-
-        // mount off-DOM per ereditare state/ctx, senza inserirli ancora nel DOM del container
-        for (const child of this.items) {
-            const staging = document.createElement('div');
-            child.mount(staging, this.state());
-        }
     }
 
     /**
@@ -92,6 +103,7 @@ export class Container<S extends object = any> extends Component<S> {
         this.items.push(child);
         const staging = document.createElement('div');
         child.mount(staging, this.state());
+        this.syncChildDisabled(child, this.state().disabled);
         this.requestRender();
         this.requestLayout();
         return this;
@@ -107,6 +119,7 @@ export class Container<S extends object = any> extends Component<S> {
         if (idx >= 0) {
             this.items.splice(idx, 1);
             child.unmount();
+            this._disabledSnapshots.delete(child);
             this.requestRender();
             this.requestLayout();
         }
@@ -157,7 +170,30 @@ export class Container<S extends object = any> extends Component<S> {
                 });
             }
         }
+        this._disabledCascadeUnsub?.();
+        this._disabledCascadeUnsub = undefined;
         for (const child of this.items) child.unmount();
+        this._disabledSnapshots = new WeakMap<Component, boolean>();
+    }
+
+    /** Propaga il disabled del container verso tutti i figli. */
+    private cascadeDisabled(disabled: boolean): void {
+        for (const child of this.items) this.syncChildDisabled(child, disabled);
+    }
+
+    /** Sincronizza il disabled di un singolo figlio con il valore del container. */
+    private syncChildDisabled(child: Component, containerDisabled: boolean): void {
+        const childState = child.state() as { disabled: boolean };
+        if (containerDisabled) {
+            if (!this._disabledSnapshots.has(child)) {
+                this._disabledSnapshots.set(child, childState.disabled);
+            }
+            if (!childState.disabled) childState.disabled = true;
+        } else if (this._disabledSnapshots.has(child)) {
+            const previous = this._disabledSnapshots.get(child)!;
+            this._disabledSnapshots.delete(child);
+            if (childState.disabled !== previous) childState.disabled = previous;
+        }
     }
 }
 
