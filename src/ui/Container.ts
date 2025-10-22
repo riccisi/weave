@@ -30,11 +30,6 @@ export class Container<S extends object = any> extends Component<S> {
         super(props);
     }
 
-    /** Schema reattivo base del container (vuoto salvo override) */
-    protected schema(): StateInit {
-        return this.stateInit ?? {};
-    }
-
     /**
      * Lifecycle: prima del primo render.
      * - istanzia il layout dalla props (oggetto o { type, ... }),

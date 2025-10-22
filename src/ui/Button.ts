@@ -20,8 +20,7 @@ type Shape = 'rounded' | 'pill' | 'circle' | 'square';
 export interface ButtonState {
     /** Label text (if empty + icon-only, provide ariaLabel via props). */
     text: string;
-    /** Disable button (HTML + visual). */
-    disabled: boolean;
+
     /** Visual variant. */
     variant: Variant;
     /** Semantic color. */
@@ -70,7 +69,6 @@ export class Button extends Component<ButtonState> {
 
     protected stateInit: StateInit = {
         text: 'Button',
-        disabled: false,
         variant: 'solid',
         color: 'default',
         size: 'md',
@@ -144,8 +142,7 @@ export class Button extends Component<ButtonState> {
         if (s.glass) cls.add('glass');
 
         // states
-        if (s.active)   cls.add('btn-active');
-        if (s.disabled) cls.add('btn-disabled'); // visual; real disabled below
+        if (s.active) cls.add('btn-active');
 
         // waves (optional plugin)
         const waves = this.props.waves as boolean | undefined;
@@ -167,8 +164,6 @@ export class Button extends Component<ButtonState> {
         this._appliedClasses = cls; // track for next diff
 
         // --- attributes ----------------------------------------------------------
-        const isDisabled = s.disabled || s.loading;
-        host.toggleAttribute('disabled', !!isDisabled);
         if (s.loading) host.setAttribute('aria-busy', 'true'); else host.removeAttribute('aria-busy');
 
         // aria-label fallback if icon-only
@@ -197,6 +192,20 @@ export class Button extends Component<ButtonState> {
         const textNode = s.text ? html`${s.text}` : null;
 
         return html`${leftIcon} ${spinner} ${textNode} ${rightIcon}`;
+    }
+
+    protected applyDisabled() {
+        super.applyDisabled();
+
+        const host = this.el();
+        const s = this.state();
+        const disabledEffective = s.disabled || s.loading;
+        if (disabledEffective) {
+            host.classList.add('btn-disabled');
+        } else {
+            host.classList.remove('btn-disabled');
+        }
+        host.toggleAttribute('disabled', disabledEffective);
     }
 
     /** Cleanup event listeners. */

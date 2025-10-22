@@ -1,11 +1,11 @@
 import { render } from 'uhtml';
-import { State } from '../state/State';
-import { ReactiveRuntime } from '../state/ReactiveRuntime';
+import { State } from '@state/State';
+import { ReactiveRuntime } from '@state/ReactiveRuntime';
 
 export type StateInit = Record<string, any>;
 
-/** Built-in visibility shared by all components */
-type Visibility = {
+/** Built-in common properties shared by all components */
+type ComponentState = {
     /** When true, the host is hidden (display:none). Bindable. */
     hidden: boolean;
     /**
@@ -13,6 +13,14 @@ type Visibility = {
      * Default: false for wide browser compatibility.
      */
     hiddenInert?: boolean;
+
+    /** When true, the component is considered disabled. Bindable. */
+    disabled: boolean;
+    /**
+     * If true, also adds inert while disabled (blocks focus & interactions at host level).
+     * Useful for non-form roots; leaf components should also reflect native disabled where applicable.
+     */
+    disabledInert?: boolean;
 };
 
 /**
@@ -34,7 +42,7 @@ export abstract class Component<S extends object = any> {
     /** Optional short name for registry auto-binding (e.g., 'button', 'container'). */
     static wtype?: string;
 
-    protected _state!: State & S & Visibility;
+    protected _state!: State & S & ComponentState;
     protected _host!: HTMLElement;
     protected _mounted = false;
     protected _parentState?: State;
@@ -60,11 +68,19 @@ export abstract class Component<S extends object = any> {
 
     /**
      * Return the reactive schema for this component.
-     * Includes built-in visibility keys so they're always available and bindable.
+     * Includes built-in visibility and disabled keys so they're always available and bindable.
      */
     protected schema(): StateInit {
-        // Merge built-in visibility with subclass schema
-        return { hidden: false, hiddenInert: false, ...(this.stateInit ?? {}) };
+        return {
+            // visibility
+            hidden: false,
+            hiddenInert: false,
+            // disabled
+            disabled: false,
+            disabledInert: false,
+            // subclass additions
+            ...(this.stateInit ?? {})
+        };
     }
 
     /** Produce the component template. Keep it pure; no side effects here. */
@@ -87,7 +103,7 @@ export abstract class Component<S extends object = any> {
     protected beforeUnmount(): void { /* no-op */ }
 
     /** Access the reactive state (typed with S). */
-    public state(): State & S & Visibility {
+    public state(): State & S & ComponentState {
         return this._state;
     }
 
@@ -103,6 +119,13 @@ export abstract class Component<S extends object = any> {
 
     /**
      * Mount the component into a container, optionally inheriting a parent State.
+     * - creates a reactive State from the schema (or `stateInit`)
+     * - creates a host element (using `hostTag()`)
+     * - attaches the host to the DOM
+     * - calls `beforeMount()`
+     * - subscribes to schema keys for re-render
+     * - calls `afterMount()`
+     *
      * @param target DOM element or selector to attach to.
      * @param parent a Component or a State that becomes the parent state for this component.
      */
@@ -117,7 +140,7 @@ export abstract class Component<S extends object = any> {
         if (parent instanceof Component) this._parentState = parent.state();
         else if (parent) this._parentState = parent;
 
-        // Full schema includes visibility (hidden/hiddenInert)
+        // Full schema includes built-in keys
         const fullSchema = this.schema();
 
         // Split incoming config into state overrides (keys in schema) and plain props
@@ -127,7 +150,7 @@ export abstract class Component<S extends object = any> {
         // Create reactive state inheriting the parent runtime
         const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime as ReactiveRuntime | undefined;
         const initial = { ...fullSchema, ...stateOverrides };
-        this._state = new State(initial, this._parentState, runtime) as State & S & Visibility;
+        this._state = new State(initial, this._parentState, runtime) as State & S & ComponentState;
 
         // Create host and apply className prop (if any)
         this._host = document.createElement(this.hostTag());
@@ -137,19 +160,25 @@ export abstract class Component<S extends object = any> {
         this.beforeMount();
 
         // Subscribe to schema keys for re-render,
-        // excluding visibility toggles which are handled without forcing a re-render.
+        // excluding visibility/disabled toggles which are handled without forcing a re-render.
         for (const key of Object.keys(fullSchema)) {
-            if (key === 'hidden' || key === 'hiddenInert') continue;
+            if (key === 'hidden' || key === 'hiddenInert' || key === 'disabled' || key === 'disabledInert') continue;
             this._unsubs.push(this._state.on(key, () => this.requestRender(), { immediate: false }));
         }
         // Visibility listeners (no template re-render needed)
         this._unsubs.push(this._state.on('hidden',      () => this.applyVisibility(), { immediate: false }));
         this._unsubs.push(this._state.on('hiddenInert', () => this.applyVisibility(), { immediate: false }));
+        // Disabled listeners (no template re-render needed)
+        this._unsubs.push(this._state.on('disabled',      () => this.applyDisabled(), { immediate: false }));
+        this._unsubs.push(this._state.on('disabledInert', () => this.applyDisabled(), { immediate: false }));
 
         // Attach to DOM and render once
         container.appendChild(this._host);
         this.doRender();
-        this.applyVisibility(); // align initial visibility
+
+        // Align initial visibility/disabled
+        this.applyVisibility();
+        this.applyDisabled();
 
         this._mounted = true;
 
@@ -228,7 +257,9 @@ export abstract class Component<S extends object = any> {
         queueMicrotask(() => {
             this._renderQueued = false;
             this.doRender();
-            this.applyVisibility(); // keep visibility in sync after every commit
+            // keep host-level effects in sync after every commit
+            this.applyVisibility();
+            this.applyDisabled();
         });
     }
 
@@ -254,7 +285,30 @@ export abstract class Component<S extends object = any> {
         } else {
             host.style.display = '';
             host.removeAttribute('aria-hidden');
+            // NOTE: don't decide inert here for disabled; applyDisabled() will handle that.
             host.removeAttribute('inert');
+            // applyDisabled() will re-add inert if needed.
+        }
+    }
+
+    /**
+     * Apply disabled state on the host without triggering a render.
+     * - aria-disabled for semantics
+     * - inert (optional) to block focus & interactions at host level
+     *   (leaf components should also reflect native disabled where applicable)
+     */
+    protected applyDisabled(): void {
+        const s = this.state();
+        const host = this._host;
+        if (!host) return;
+
+        if (s.disabled) {
+            host.setAttribute('aria-disabled', 'true');
+            if (s.disabledInert) host.setAttribute('inert', '');
+        } else {
+            host.removeAttribute('aria-disabled');
+            // remove inert only if not hidden; if hiddenInert is active, visibility keeps it
+            if (!s.hidden) host.removeAttribute('inert');
         }
     }
 
@@ -268,7 +322,7 @@ export abstract class Component<S extends object = any> {
     protected splitOptions(
         opts: Record<string, any>,
         schema: StateInit
-    ): { stateOverrides: Partial<S & Visibility>; props: Record<string, any> } {
+    ): { stateOverrides: Partial<S & ComponentState>; props: Record<string, any> } {
         const schemaKeys = new Set(Object.keys(schema));
         const stateOverrides: Record<string, any> = {};
         const props: Record<string, any> = {};
@@ -289,7 +343,7 @@ export abstract class Component<S extends object = any> {
             else props[k] = v;
         }
 
-        return { stateOverrides: stateOverrides as Partial<S & Visibility>, props };
+        return { stateOverrides: stateOverrides as Partial<S & ComponentState>, props };
     }
 
     // ---- internal helpers -----------------------------------------------------
