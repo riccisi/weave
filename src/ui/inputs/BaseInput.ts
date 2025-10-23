@@ -61,6 +61,7 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
     protected override schema(): StateInit {
         return {
             ...super.schema(),
+            ...this.stateInit,
             ...this.extraStateInit(),
         };
     }
