@@ -13,8 +13,7 @@ const meta: Meta = {
     argTypes: {
         labelMode: { control: 'select', options: ['none', 'inline', 'floating'] },
         size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'xl'] },
-        variant: { control: 'select', options: ['default', 'bordered', 'ghost'] },
-        color: { control: 'select', options: ['default','primary','secondary','accent','info','success','warning','error'] },
+        spellcheck: { control: 'boolean' },
     },
 };
 export default meta;
@@ -35,7 +34,6 @@ export const Floating: Story = {
         labelMode: 'floating',
         placeholder: 'john@example.com',
         value: '',
-        color: 'primary',
     },
 };
 
@@ -46,17 +44,25 @@ export const WithHelperAndValidation: Story = {
         required: true,
         helperText: 'Questo campo è obbligatorio',
         value: '',
-        color: 'warning',
+        minLength: 3,
     },
 };
 
-export const SizesAndVariants: Story = {
+export const Sizes: Story = {
     args: {
         label: 'Label',
         labelMode: 'inline',
         size: 'lg',
-        variant: 'bordered',
-        color: 'accent',
         value: 'Preview',
+    },
+};
+
+export const WithPattern: Story = {
+    args: {
+        label: 'ZIP Code',
+        labelMode: 'inline',
+        helperText: 'Formato: 5 cifre',
+        pattern: '^\\d{5}$',
+        placeholder: '00000',
     },
 };

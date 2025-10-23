@@ -12,8 +12,6 @@ const meta: Meta = {
     argTypes: {
         labelMode: { control: 'select', options: ['none', 'inline', 'floating'] },
         size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'xl'] },
-        variant: { control: 'select', options: ['default', 'bordered', 'ghost'] },
-        color: { control: 'select', options: ['default','primary','secondary','accent','info','success','warning','error'] },
     },
 };
 export default meta;
@@ -35,7 +33,6 @@ export const MinMax: Story = {
         value: 50,
         min: 0,
         max: 100,
-        color: 'info',
     },
 };
 
@@ -46,6 +43,15 @@ export const Required: Story = {
         required: true,
         value: null,
         helperText: 'Inserisci un numero',
-        color: 'error',
+    },
+};
+
+export const WithStep: Story = {
+    args: {
+        label: 'Price',
+        labelMode: 'inline',
+        step: 0.5,
+        min: 0,
+        placeholder: '0.0',
     },
 };
