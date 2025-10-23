@@ -50,6 +50,9 @@ export abstract class Component<S extends object = any> {
     protected _mounted = false;
     protected _parentState?: State;
 
+    /** Whether the generated id should be assigned to the host element. */
+    protected applyIdToHost = true;
+
     /** Component-wide unique id (overridable via props.id). */
     protected readonly _id: string;
 
@@ -177,6 +180,7 @@ export abstract class Component<S extends object = any> {
         // Create host and apply className prop (if any)
         this._host = document.createElement(this.hostTag());
         if (typeof this.props.className === 'string') this._host.className = this.props.className;
+        if (this.applyIdToHost) this._host.id = this._id;
 
         // Lifecycle hook
         this.beforeMount();
