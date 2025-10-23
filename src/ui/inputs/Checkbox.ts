@@ -73,7 +73,7 @@ export class Checkbox extends BaseInput<boolean, CheckboxState> {
         const host = this.el();
 
         // --- host classes -----------------------------------------------------
-        const hostClasses = new Set<string>();
+        const hostClasses = new Set<string>(['flex', 'items-center', 'gap-1']);
         const extra = typeof this.props.className === 'string'
             ? this.props.className.split(/\s+/).filter(Boolean)
             : [];
@@ -144,34 +144,35 @@ export class Checkbox extends BaseInput<boolean, CheckboxState> {
         // --- label & helper ---------------------------------------------------
         const effectivePlacement = s.labelPlacement || LABEL_MODE_TO_PLACEMENT[s.labelMode];
         const showLabel = s.label && s.labelMode !== 'none';
-        const labelContent = showLabel ? html`<span class="label-text">${s.label}</span>` : null;
+        const labelClasses = ['label-text', 'cursor-pointer'];
+        if (s.size === 'xs') labelClasses.push('text-xs');
+        else if (s.size === 'sm') labelClasses.push('text-sm');
+        else if (s.size === 'lg' || s.size === 'xl') labelClasses.push('text-lg');
+        else labelClasses.push('text-base');
+        const renderLabel = () => showLabel
+            ? html`<label class=${labelClasses.join(' ')} for=${inputId}>${s.label}</label>`
+            : null;
         const helper = helperContent
             ? html`<div id=${helperId} class="mt-1 text-xs opacity-80">${helperContent}</div>`
             : null;
 
-        const labelClasses = ['label', 'cursor-pointer', 'gap-2'];
-        if (s.size === 'xs') labelClasses.push('text-xs');
-        else if (s.size === 'sm') labelClasses.push('text-sm');
-
         return html`
-      <label class=${labelClasses.join(' ')} for=${inputId}>
-        ${effectivePlacement === 'left' ? labelContent : null}
-        <input
-          id=${inputId}
-          class=${checkboxClass}
-          type="checkbox"
-          ?checked=${!!s.value}
-          .indeterminate=${!!s.indeterminate && !s.value}
-          ?readonly=${s.readonly}
-          ?required=${s.required}
-          aria-invalid=${ariaInvalid}
-          aria-required=${ariaRequired}
-          aria-describedby=${ariaDescribedBy}
-          oninput=${onInput}
-          onchange=${onChange}
-        />
-        ${effectivePlacement === 'right' ? labelContent : null}
-      </label>
+      ${effectivePlacement === 'left' ? renderLabel() : null}
+      <input
+        id=${inputId}
+        class=${checkboxClass}
+        type="checkbox"
+        ?checked=${!!s.value}
+        .indeterminate=${!!s.indeterminate && !s.value}
+        ?readonly=${s.readonly}
+        ?required=${s.required}
+        aria-invalid=${ariaInvalid}
+        aria-required=${ariaRequired}
+        aria-describedby=${ariaDescribedBy}
+        oninput=${onInput}
+        onchange=${onChange}
+      />
+      ${effectivePlacement === 'right' ? renderLabel() : null}
       ${helper}
     `;
     }
