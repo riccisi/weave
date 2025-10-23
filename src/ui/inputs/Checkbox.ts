@@ -72,7 +72,7 @@ export class Checkbox extends BaseInput<boolean, CheckboxState> {
 
     protected override view() {
         const s = this.state();
-        this.applyHostClasses(this.collectHostClasses(['flex', 'items-center', 'gap-1']));
+        this.syncHostClasses(this.hostClassTokens('flex', 'items-center', 'gap-1'));
 
         // --- checkbox classes -------------------------------------------------
         const checkboxClasses = new Set<string>(['checkbox']);

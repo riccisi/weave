@@ -42,7 +42,6 @@ export interface BaseInputState<T> {
  */
 export abstract class BaseInput<T, ExtraState extends object = Record<string, never>>
     extends Component<BaseInputState<T> & ExtraState> {
-    protected _appliedHostClasses = new Set<string>();
     protected _pendingInputAttrs: Record<string, any> = {};
     protected _appliedInputAttrKeys = new Set<string>();
     private _validationUnsub: (() => void) | null = null;
@@ -96,39 +95,10 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
         return s.labelMode === 'floating' ? ['input-floating'] : [];
     }
 
-    /** Classi aggiuntive provenienti da props.className (se impostate). */
-    private propHostClasses(): string[] {
-        const raw = this.props.className;
-        if (typeof raw !== 'string' || !raw.trim()) return [];
-        return raw.split(/\s+/).filter(Boolean);
-    }
-
-    protected collectHostClasses(additional: Iterable<string | false | null | undefined> = []): Set<string> {
-        const classes = new Set<string>(this.defaultHostClasses());
-        for (const cls of additional) {
-            if (!cls) continue;
-            classes.add(cls);
-        }
-        for (const cls of this.propHostClasses()) classes.add(cls);
-        return classes;
-    }
-
-    protected applyHostClasses(classList: Iterable<string>): void {
-        const host = this.el();
-        const next = new Set<string>();
-        for (const cls of classList) {
-            const normalized = cls?.trim();
-            if (!normalized) continue;
-            next.add(normalized);
-        }
-
-        for (const cls of this._appliedHostClasses) {
-            if (!next.has(cls)) host.classList.remove(cls);
-        }
-        for (const cls of next) {
-            if (!this._appliedHostClasses.has(cls)) host.classList.add(cls);
-        }
-        this._appliedHostClasses = next;
+    protected hostClassTokens(
+        ...additional: Array<string | false | null | undefined | Iterable<string | false | null | undefined>>
+    ): Set<string> {
+        return this.hostClasses(this.defaultHostClasses(), additional);
     }
 
     protected defaultInputClasses(): string[] {
@@ -188,7 +158,7 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
 
     protected view() {
         const s = this.state();
-        this.applyHostClasses(this.collectHostClasses());
+        this.syncHostClasses(this.hostClassTokens());
 
         const inputClass = this.inputClass();
 
