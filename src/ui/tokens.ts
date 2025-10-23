@@ -51,18 +51,4 @@ export const FlyonColorClasses = {
         };
         return m[color] ?? null;
     },
-
-    input(color: FlyonColor): string | null {
-        const m: Record<FlyonColor, string | null> = {
-            default: null,
-            primary: 'input-primary',
-            secondary: 'input-secondary',
-            accent: 'input-accent',
-            info: 'input-info',
-            success: 'input-success',
-            warning: 'input-warning',
-            error: 'input-error',
-        };
-        return m[color] ?? null;
-    },
 } as const;

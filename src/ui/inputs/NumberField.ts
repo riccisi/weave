@@ -8,8 +8,16 @@ export interface NumberFieldState {
     step?: number | null;
 }
 
-export class NumberField extends BaseInput<number> {
+export class NumberField extends BaseInput<number, NumberFieldState> {
     static wtype = 'numberfield';
+
+    protected override extraStateInit(): NumberFieldState {
+        return {
+            min: null,
+            max: null,
+            step: null,
+        };
+    }
 
     protected inputType(): string { return 'number'; }
     protected toDom(v: number | null): string { return v == null ? '' : String(v); }
@@ -20,8 +28,18 @@ export class NumberField extends BaseInput<number> {
         // (in alternativa potresti restituire l’ultimo valido e marcare invalid)
     }
 
+    protected override inputAttributes(): Record<string, any> {
+        const s = this.state();
+        return {
+            min: s.min ?? undefined,
+            max: s.max ?? undefined,
+            step: s.step ?? undefined,
+            inputmode: this.props.inputMode ?? 'decimal',
+        };
+    }
+
     protected validate(v: number | null) {
-        const s = this.state() as any as NumberFieldState;
+        const s = this.state();
         if (this.state().required && v == null) return { valid: false, message: 'Required' };
         if (v == null) return { valid: true };
         if (s.min != null && v < s.min) return { valid: false, message: `Min ${s.min}` };

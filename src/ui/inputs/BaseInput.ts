@@ -1,10 +1,7 @@
 
 import { html } from 'uhtml';
 import { Component, type StateInit } from '../Component';
-import { FlyonColor, FlyonColorClasses } from '../tokens';
-
 export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
-export type InputVariant = 'default' | 'bordered' | 'ghost';
 export type LabelMode = 'none' | 'inline' | 'floating';
 
 export interface BaseInputState<T> {
@@ -17,8 +14,6 @@ export interface BaseInputState<T> {
 
     // UI
     size: InputSize;        // input-xs/sm/(md)/lg/xl
-    variant: InputVariant;  // input, input-bordered, input-ghost
-    color: FlyonColor;      // input-primary, ...
     placeholder: string | null;
 
     // label & help
@@ -39,7 +34,8 @@ export interface BaseInputState<T> {
  * - 2-way binding value, eventi, label inline/floating, helperText
  * - specializzazioni implementano: inputType(), toDom(), fromDom(), validate()
  */
-export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
+export abstract class BaseInput<T, ExtraState extends object = Record<string, never>>
+    extends Component<BaseInputState<T> & ExtraState> {
     private _appliedHostClasses = new Set<string>();
 
     protected applyIdToHost = false;
@@ -49,8 +45,6 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         readonly: false,
         required: false,
         size: 'md',
-        variant: 'default',
-        color: 'default',
         placeholder: null,
         label: null,
         labelMode: 'none',
@@ -59,6 +53,17 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         valid: null,
         invalidMessage: null,
     };
+
+    protected extraStateInit(): ExtraState {
+        return {} as ExtraState;
+    }
+
+    protected override schema(): StateInit {
+        return {
+            ...super.schema(),
+            ...this.extraStateInit(),
+        };
+    }
 
     protected hostTag(): string { return 'div'; }
 
@@ -95,10 +100,6 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         // classi input
         const inputClasses = new Set<string>(['input']);
         if (s.size !== 'md') inputClasses.add(`input-${s.size}`);
-        if (s.variant === 'bordered') inputClasses.add('input-bordered');
-        if (s.variant === 'ghost') inputClasses.add('input-ghost');
-        const color = FlyonColorClasses.input(s.color);
-        if (color) inputClasses.add(color);
         if (s.valid === true)  inputClasses.add('is-valid');
         if (s.valid === false) inputClasses.add('is-invalid');
         const inputClass = [...inputClasses].join(' ');
@@ -108,7 +109,23 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         const ariaRequired = s.required ? 'true' : undefined;
         const inputId = this.id();
         const helperId = this.subId('help');
-        const ariaDescribedBy = s.helperText ? helperId : undefined;
+        const helperContent = s.valid === false && s.invalidMessage
+            ? s.invalidMessage
+            : s.helperText;
+        const ariaDescribedBy = helperContent ? helperId : undefined;
+
+        const inputAttrs = {
+            name: typeof this.props.name === 'string' ? this.props.name : undefined,
+            autocomplete: typeof this.props.autocomplete === 'string' ? this.props.autocomplete : undefined,
+            inputmode: typeof this.props.inputMode === 'string' ? this.props.inputMode : undefined,
+            ...this.inputAttributes(),
+        } as Record<string, any>;
+
+        const propInputAttrs = typeof this.props.inputAttributes === 'object' && this.props.inputAttributes
+            ? this.props.inputAttributes as Record<string, any>
+            : {};
+
+        const mergedInputAttrs = { ...inputAttrs, ...propInputAttrs };
 
         // handlers
         const onInput = (ev: Event) => {
@@ -136,8 +153,8 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
             ? html`<label class="input-floating-label" for=${inputId}>${s.label}</label>` : null;
 
         // helper
-        const helper = s.helperText
-            ? html`<div id=${helperId} class="mt-1 text-xs opacity-80">${s.helperText}</div>` : null;
+        const helper = helperContent
+            ? html`<div id=${helperId} class="mt-1 text-xs opacity-80">${helperContent}</div>` : null;
 
         return html`
       ${labelInline}
@@ -148,9 +165,11 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         .value=${this.toDom(s.value)}
         placeholder=${s.placeholder ?? ''}
         ?readonly=${s.readonly}
+        ?required=${s.required}
         aria-invalid=${ariaInvalid}
         aria-required=${ariaRequired}
         aria-describedby=${ariaDescribedBy}
+        ...${mergedInputAttrs}
         oninput=${onInput}
         onchange=${onChange}
         onkeydown=${onKeyDown}
@@ -182,5 +201,9 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         const disabled = !!s.disabled;
         input.toggleAttribute('disabled', disabled);
         input.disabled = disabled;
+    }
+
+    protected inputAttributes(): Record<string, any> {
+        return {};
     }
 }
