@@ -51,6 +51,8 @@ const LABEL_MODE_TO_PLACEMENT: Record<LabelMode, LabelPlacement> = {
 export class Radio extends BaseInput<boolean, RadioState> {
     static wtype = 'radio';
 
+    protected override defaultHostClasses(): string[] { return []; }
+
     protected override extraStateInit(): RadioState {
         return {
             color: 'default',
@@ -71,16 +73,7 @@ export class Radio extends BaseInput<boolean, RadioState> {
 
     protected override view() {
         const s = this.state();
-        const host = this.el();
-
-        const hostClasses = new Set<string>(['flex', 'items-center', 'gap-1']);
-        const extra = typeof this.props.className === 'string'
-            ? this.props.className.split(/\s+/).filter(Boolean)
-            : [];
-        for (const c of extra) hostClasses.add(c);
-        for (const c of this._appliedHostClasses) host.classList.remove(c);
-        for (const c of hostClasses) host.classList.add(c);
-        this._appliedHostClasses = hostClasses;
+        this.applyHostClasses(this.collectHostClasses(['flex', 'items-center', 'gap-1']));
 
         const radioClasses = new Set<string>(['radio']);
         const sizeCls = SIZE_CLASS[s.size];
@@ -97,26 +90,14 @@ export class Radio extends BaseInput<boolean, RadioState> {
         const ariaRequired = s.required ? 'true' : undefined;
         const inputId = this.id();
         const helperId = this.subId('help');
-        const helperContent = s.valid === false && s.invalidMessage
-            ? s.invalidMessage
-            : s.helperText;
+        const helperContent = this.helperContent();
         const ariaDescribedBy = helperContent ? helperId : undefined;
 
-        const mergedInputAttrs = {
-            name: typeof this.props.name === 'string' ? this.props.name : undefined,
-            autocomplete: typeof this.props.autocomplete === 'string' ? this.props.autocomplete : undefined,
-            ...this.inputAttributes(),
-            ...(typeof this.props.inputAttributes === 'object' && this.props.inputAttributes
-                ? this.props.inputAttributes as Record<string, any>
-                : {}),
-        } as Record<string, any>;
-        this._pendingInputAttrs = mergedInputAttrs;
+        this._pendingInputAttrs = this.buildInputAttributes();
 
         const updateFrom = (input: HTMLInputElement) => {
             const next = !!input.checked;
-            s.value = next;
-            if (!s.touched) s.touched = true;
-            this.runValidation();
+            this.commitValue(next);
         };
 
         const onInput = (ev: Event) => {
