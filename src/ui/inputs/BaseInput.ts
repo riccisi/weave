@@ -42,6 +42,8 @@ export interface BaseInputState<T> {
 export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
     private _appliedHostClasses = new Set<string>();
 
+    protected applyIdToHost = false;
+
     protected stateInit: StateInit = {
         value: null,
         readonly: false,
