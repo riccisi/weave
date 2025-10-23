@@ -48,8 +48,6 @@ export interface ProgressState {
 export class Progress extends Component<ProgressState> {
     static wtype = 'progress';
 
-    private _appliedHostClasses: Set<string> = new Set();
-
     protected stateInit: StateInit = {
         value: 50,
         min: 0,
@@ -118,7 +116,7 @@ export class Progress extends Component<ProgressState> {
         const labelText = s.labelText ?? (pct == null ? '' : `${Math.round(pct)}%`);
 
         // --- host classes (wrapper) in diff -------------------------------------
-        const hostClasses = new Set<string>();
+        const hostClasses = this.hostClasses();
         // layout extra per label 'end' e 'floating'
         if (s.labelMode === 'end') {
             hostClasses.add('flex');
@@ -127,16 +125,8 @@ export class Progress extends Component<ProgressState> {
         } else if (s.labelMode === 'floating') {
             hostClasses.add('relative');
         }
-        // merge extra from props.className
-        const extra = typeof this.props.className === 'string'
-            ? this.props.className.split(/\s+/).filter(Boolean)
-            : [];
-        for (const e of extra) hostClasses.add(e);
-
         // apply diff (non tocchiamo classi esterne non applicate da noi)
-        for (const c of this._appliedHostClasses) host.classList.remove(c);
-        for (const c of hostClasses) host.classList.add(c);
-        this._appliedHostClasses = hostClasses;
+        this.syncHostClasses(hostClasses);
 
         // --- inner DOM -----------------------------------------------------------
         // barra: con label inside (se richiesta)

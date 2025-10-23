@@ -73,7 +73,7 @@ export class Radio extends BaseInput<boolean, RadioState> {
 
     protected override view() {
         const s = this.state();
-        this.applyHostClasses(this.collectHostClasses(['flex', 'items-center', 'gap-1']));
+        this.syncHostClasses(this.hostClassTokens('flex', 'items-center', 'gap-1'));
 
         const radioClasses = new Set<string>(['radio']);
         const sizeCls = SIZE_CLASS[s.size];

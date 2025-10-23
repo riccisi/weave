@@ -2,6 +2,13 @@ import { render } from 'uhtml';
 import { State } from '@state/State';
 import { ReactiveRuntime } from '@state/ReactiveRuntime';
 
+type ClassToken =
+    | string
+    | false
+    | null
+    | undefined
+    | Iterable<ClassToken>;
+
 export type StateInit = Record<string, any>;
 
 /** Built-in common properties shared by all components */
@@ -62,6 +69,12 @@ export abstract class Component<S extends object = any> {
     /** Normalized non-reactive props (everything not in the schema). */
     protected props: Record<string, any> = {};
 
+    /** Classes currently managed by the component (diffed on every render). */
+    private _managedHostClasses: Set<string> = new Set();
+
+    /** Normalized `className` tokens provided via props (never mutated). */
+    private _propClassNames: string[] = [];
+
     /** Unsubscribe handles for state listeners. */
     private _unsubs: Array<() => void> = [];
 
@@ -74,6 +87,62 @@ export abstract class Component<S extends object = any> {
     constructor(config: Record<string, any> = {}) {
         this._incomingProps = config;
         this._id = this.resolveComponentId(config);
+    }
+
+    /** Normalized list of classes provided via the `className` prop. */
+    protected propClassNames(): string[] {
+        return [...this._propClassNames];
+    }
+
+    /** Utility to compose class tokens into a normalized Set. */
+    protected hostClasses(...tokens: ClassToken[]): Set<string> {
+        const out = new Set<string>();
+        const push = (token: ClassToken): void => {
+            if (!token) return;
+            if (typeof token === 'string') {
+                for (const part of token.split(/\s+/)) {
+                    if (part) out.add(part);
+                }
+                return;
+            }
+            if (typeof (token as any)[Symbol.iterator] === 'function') {
+                for (const inner of token as Iterable<ClassToken>) push(inner);
+            }
+        };
+        for (const token of tokens) push(token);
+        return out;
+    }
+
+    /** Apply host classes diffing only the ones managed by the component. */
+    protected syncHostClasses(
+        classes: Iterable<string>,
+        opts: { includePropClasses?: boolean } = {}
+    ): void {
+        const host = this._host;
+        if (!host) return;
+
+        const includePropClasses = opts.includePropClasses ?? true;
+        const next = new Set<string>();
+
+        for (const cls of classes) {
+            const normalized = cls?.trim();
+            if (!normalized) continue;
+            next.add(normalized);
+        }
+
+        if (includePropClasses) {
+            for (const cls of this._propClassNames) next.add(cls);
+        }
+
+        for (const cls of this._managedHostClasses) {
+            if (!next.has(cls)) host.classList.remove(cls);
+        }
+
+        for (const cls of next) {
+            if (!this._managedHostClasses.has(cls)) host.classList.add(cls);
+        }
+
+        this._managedHostClasses = next;
     }
 
     /**
@@ -171,6 +240,7 @@ export abstract class Component<S extends object = any> {
         // Split incoming config into state overrides (keys in schema) and plain props
         const { stateOverrides, props } = this.splitOptions(this._incomingProps, fullSchema);
         this.props = props;
+        this._propClassNames = Component.normalizeClassProp(props.className);
 
         // Create reactive state inheriting the parent runtime
         const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime as ReactiveRuntime | undefined;
@@ -232,6 +302,7 @@ export abstract class Component<S extends object = any> {
         Component._byHost.delete(this._host);
 
         this._mounted = false;
+        this._managedHostClasses = new Set();
     }
 
     /** Find a component instance from a DOM node, if any. */
@@ -383,6 +454,14 @@ export abstract class Component<S extends object = any> {
         const safe = prefix && prefix.trim().length ? prefix.trim() : 'cmp';
         const seq = ++Component._idSeq;
         return `${safe}-${seq}`;
+    }
+
+    private static normalizeClassProp(value: unknown): string[] {
+        if (typeof value !== 'string') return [];
+        return value
+            .split(/\s+/)
+            .map((cls) => cls.trim())
+            .filter((cls) => cls.length > 0);
     }
 
     // ---- internal helpers -----------------------------------------------------

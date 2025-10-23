@@ -62,8 +62,6 @@ export interface ButtonState {
 export class Button extends Component<ButtonState> {
     static wtype = 'button';
 
-    /** Track last-applied classes to avoid wiping external classes (e.g., layout). */
-    private _appliedClasses: Set<string> = new Set();
     /** Bound click handler for proper cleanup. */
     private _onClickBound?: (ev: MouseEvent) => void;
 
@@ -102,7 +100,7 @@ export class Button extends Component<ButtonState> {
         const host = this.el();
 
         // --- compute class set (only the ones we own) ---------------------------
-        const cls = new Set<string>(['btn']);
+        const cls = this.hostClasses('btn');
 
         // variant
         switch (s.variant) {
@@ -152,16 +150,8 @@ export class Button extends Component<ButtonState> {
             if (wavesTone) cls.add(`waves-${wavesTone}`);
         }
 
-        // merge extra classes from props.className
-        const extra = typeof this.props.className === 'string'
-            ? this.props.className.split(/\s+/).filter(Boolean)
-            : [];
-        for (const c of extra) cls.add(c);
-
         // --- apply classes to host (diff: remove only what we applied before) ---
-        for (const c of this._appliedClasses) host.classList.remove(c);
-        for (const c of cls) host.classList.add(c);
-        this._appliedClasses = cls; // track for next diff
+        this.syncHostClasses(cls);
 
         // --- attributes ----------------------------------------------------------
         if (s.loading) host.setAttribute('aria-busy', 'true'); else host.removeAttribute('aria-busy');

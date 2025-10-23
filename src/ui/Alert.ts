@@ -44,8 +44,6 @@ export interface AlertState {
 export class Alert extends Component<AlertState> {
     static wtype = 'alert';
 
-    /** track delle classi applicate da Alert per non toccare classi esterne */
-    private _appliedClasses: Set<string> = new Set();
     /** sotto-componenti azione (Button) */
     private _buttons: Button[] = [];
 
@@ -98,7 +96,7 @@ export class Alert extends Component<AlertState> {
         const host = this.el();
 
         // --- classi del host (solo quelle “nostre”) ---------------------------------
-        const classes = new Set<string>(['alert']);
+        const classes = this.hostClasses('alert');
 
         // variante
         if (s.variant === 'soft') classes.add('alert-soft');
@@ -138,16 +136,8 @@ export class Alert extends Component<AlertState> {
             classes.add('removing:translate-x-5');
         }
 
-        // extra className da props
-        const extra = typeof this.props.className === 'string'
-            ? this.props.className.split(/\s+/).filter(Boolean)
-            : [];
-        for (const e of extra) classes.add(e);
-
         // diff classes sul host (non rimuovere classi esterne es. join-item)
-        for (const cls of this._appliedClasses) host.classList.remove(cls);
-        for (const cls of classes) host.classList.add(cls);
-        this._appliedClasses = classes;
+        this.syncHostClasses(classes);
 
         // attributi host
         host.setAttribute('role', 'alert');
