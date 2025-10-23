@@ -12,7 +12,6 @@ export interface BaseInputState<T> {
     value: T | null;
 
     // stato HTML
-    disabled: boolean;
     readonly: boolean;
     required: boolean;
 
@@ -46,7 +45,6 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
 
     protected stateInit: StateInit = {
         value: null,
-        disabled: false,
         readonly: false,
         required: false,
         size: 'md',
@@ -144,7 +142,6 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         type=${this.inputType()}
         .value=${this.toDom(s.value)}
         placeholder=${s.placeholder ?? ''}
-        ?disabled=${s.disabled}
         ?readonly=${s.readonly}
         aria-invalid=${ariaInvalid}
         aria-required=${ariaRequired}
@@ -174,5 +171,17 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
     private static _seq = 0;
     private static _uid(): string {
         return `input-${++BaseInput._seq}`;
+    }
+
+    protected applyDisabled(): void {
+        super.applyDisabled();
+
+        const s = this.state();
+        const input = this.el().querySelector('input');
+        if (!(input instanceof HTMLInputElement)) return;
+
+        const disabled = !!s.disabled;
+        input.toggleAttribute('disabled', disabled);
+        input.disabled = disabled;
     }
 }
