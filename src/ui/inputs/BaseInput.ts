@@ -37,6 +37,8 @@ export interface BaseInputState<T> {
 export abstract class BaseInput<T, ExtraState extends object = Record<string, never>>
     extends Component<BaseInputState<T> & ExtraState> {
     private _appliedHostClasses = new Set<string>();
+    private _pendingInputAttrs: Record<string, any> = {};
+    private _appliedInputAttrKeys = new Set<string>();
 
     protected applyIdToHost = false;
 
@@ -115,18 +117,17 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
             : s.helperText;
         const ariaDescribedBy = helperContent ? helperId : undefined;
 
-        const inputAttrs = {
+        const mergedInputAttrs = {
             name: typeof this.props.name === 'string' ? this.props.name : undefined,
             autocomplete: typeof this.props.autocomplete === 'string' ? this.props.autocomplete : undefined,
             inputmode: typeof this.props.inputMode === 'string' ? this.props.inputMode : undefined,
             ...this.inputAttributes(),
+            ...(typeof this.props.inputAttributes === 'object' && this.props.inputAttributes
+                ? this.props.inputAttributes as Record<string, any>
+                : {}),
         } as Record<string, any>;
 
-        const propInputAttrs = typeof this.props.inputAttributes === 'object' && this.props.inputAttributes
-            ? this.props.inputAttributes as Record<string, any>
-            : {};
-
-        const mergedInputAttrs = { ...inputAttrs, ...propInputAttrs };
+        this._pendingInputAttrs = mergedInputAttrs;
 
         // handlers
         const onInput = (ev: Event) => {
@@ -170,7 +171,6 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
         aria-invalid=${ariaInvalid}
         aria-required=${ariaRequired}
         aria-describedby=${ariaDescribedBy}
-        ...${mergedInputAttrs}
         oninput=${onInput}
         onchange=${onChange}
         onkeydown=${onKeyDown}
@@ -178,6 +178,11 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
       ${labelFloating}
       ${helper}
     `;
+    }
+
+    protected override doRender(): void {
+        super.doRender();
+        this.applyDynamicInputAttributes();
     }
 
     private runValidation(): void {
@@ -206,5 +211,34 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
 
     protected inputAttributes(): Record<string, any> {
         return {};
+    }
+
+    private applyDynamicInputAttributes(): void {
+        const input = this.el().querySelector('input');
+        if (!(input instanceof HTMLInputElement)) return;
+
+        const attrs = this._pendingInputAttrs ?? {};
+        const nextKeys = new Set<string>();
+
+        for (const [key, value] of Object.entries(attrs)) {
+            if (value === undefined || value === null || value === false) {
+                input.removeAttribute(key);
+                this._appliedInputAttrKeys.delete(key);
+                continue;
+            }
+
+            const normalized = typeof value === 'boolean' ? '' : String(value);
+            input.setAttribute(key, normalized);
+            nextKeys.add(key);
+            this._appliedInputAttrKeys.add(key);
+        }
+
+        const currentKeys = Array.from(this._appliedInputAttrKeys);
+        for (const key of currentKeys) {
+            if (!nextKeys.has(key)) {
+                input.removeAttribute(key);
+                this._appliedInputAttrKeys.delete(key);
+            }
+        }
     }
 }
