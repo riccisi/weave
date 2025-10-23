@@ -39,6 +39,9 @@ export abstract class Component<S extends object = any> {
     /** Reverse lookup: DOM host → component instance. */
     private static _byHost = new WeakMap<HTMLElement, Component>();
 
+    /** Global incremental id sequence shared by all components. */
+    private static _idSeq = 0;
+
     /** Optional short name for registry auto-binding (e.g., 'button', 'container'). */
     static wtype?: string;
 
@@ -46,6 +49,9 @@ export abstract class Component<S extends object = any> {
     protected _host!: HTMLElement;
     protected _mounted = false;
     protected _parentState?: State;
+
+    /** Component-wide unique id (overridable via props.id). */
+    protected readonly _id: string;
 
     /** Raw config passed by the user (used only at construction time). */
     private readonly _incomingProps: Record<string, any>;
@@ -64,6 +70,7 @@ export abstract class Component<S extends object = any> {
 
     constructor(config: Record<string, any> = {}) {
         this._incomingProps = config;
+        this._id = this.resolveComponentId(config);
     }
 
     /**
@@ -110,6 +117,21 @@ export abstract class Component<S extends object = any> {
     /** Access the component host element. */
     public el(): HTMLElement {
         return this._host;
+    }
+
+    /** Access the generated component id. */
+    public id(): string {
+        return this._id;
+    }
+
+    /** Utility to derive a deterministic sub-id (e.g., `${id}-label`). */
+    protected subId(suffix: string): string {
+        return `${this._id}-${suffix}`;
+    }
+
+    /** Prefix for generated ids (override in subclasses). */
+    protected idPrefix(): string {
+        return 'cmp';
     }
 
     /** Whether the component has been mounted. */
@@ -344,6 +366,19 @@ export abstract class Component<S extends object = any> {
         }
 
         return { stateOverrides: stateOverrides as Partial<S & ComponentState>, props };
+    }
+
+    /** Resolve the base component id, allowing overrides via `props.id`. */
+    protected resolveComponentId(config: Record<string, any>): string {
+        const incomingId = typeof config.id === 'string' ? config.id.trim() : '';
+        if (incomingId) return incomingId;
+        return Component.generateId(this.idPrefix());
+    }
+
+    private static generateId(prefix: string): string {
+        const safe = prefix && prefix.trim().length ? prefix.trim() : 'cmp';
+        const seq = ++Component._idSeq;
+        return `${safe}-${seq}`;
     }
 
     // ---- internal helpers -----------------------------------------------------

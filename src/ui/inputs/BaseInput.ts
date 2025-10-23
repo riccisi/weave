@@ -41,7 +41,6 @@ export interface BaseInputState<T> {
  */
 export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
     private _appliedHostClasses = new Set<string>();
-    private _id = BaseInput._uid();
 
     protected stateInit: StateInit = {
         value: null,
@@ -60,6 +59,8 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
     };
 
     protected hostTag(): string { return 'div'; }
+
+    protected idPrefix(): string { return 'input'; }
 
     /** type="" dell'input nativo (es. "text", "number", "date", ...) */
     protected abstract inputType(): string;
@@ -103,7 +104,9 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
         // aria
         const ariaInvalid = s.valid === false ? 'true' : undefined;
         const ariaRequired = s.required ? 'true' : undefined;
-        const ariaDescribedBy = s.helperText ? `${this._id}-help` : undefined;
+        const inputId = this.id();
+        const helperId = this.subId('help');
+        const ariaDescribedBy = s.helperText ? helperId : undefined;
 
         // handlers
         const onInput = (ev: Event) => {
@@ -125,19 +128,19 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
 
         // label
         const labelInline = s.label && s.labelMode === 'inline'
-            ? html`<label class="label-text" for=${this._id}>${s.label}</label>` : null;
+            ? html`<label class="label-text" for=${inputId}>${s.label}</label>` : null;
 
         const labelFloating = s.label && s.labelMode === 'floating'
-            ? html`<label class="input-floating-label" for=${this._id}>${s.label}</label>` : null;
+            ? html`<label class="input-floating-label" for=${inputId}>${s.label}</label>` : null;
 
         // helper
         const helper = s.helperText
-            ? html`<div id=${`${this._id}-help`} class="mt-1 text-xs opacity-80">${s.helperText}</div>` : null;
+            ? html`<div id=${helperId} class="mt-1 text-xs opacity-80">${s.helperText}</div>` : null;
 
         return html`
       ${labelInline}
       <input
-        id=${this._id}
+        id=${inputId}
         class=${inputClass}
         type=${this.inputType()}
         .value=${this.toDom(s.value)}
@@ -165,12 +168,6 @@ export abstract class BaseInput<T> extends Component<BaseInputState<T>> {
             // se non validiamo, manteniamo l’ultimo stato (o null finché non toccato)
             if (!s.touched) s.valid = null;
         }
-    }
-
-    // id helper
-    private static _seq = 0;
-    private static _uid(): string {
-        return `input-${++BaseInput._seq}`;
     }
 
     protected applyDisabled(): void {
