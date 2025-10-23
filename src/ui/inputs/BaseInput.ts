@@ -36,9 +36,9 @@ export interface BaseInputState<T> {
  */
 export abstract class BaseInput<T, ExtraState extends object = Record<string, never>>
     extends Component<BaseInputState<T> & ExtraState> {
-    private _appliedHostClasses = new Set<string>();
-    private _pendingInputAttrs: Record<string, any> = {};
-    private _appliedInputAttrKeys = new Set<string>();
+    protected _appliedHostClasses = new Set<string>();
+    protected _pendingInputAttrs: Record<string, any> = {};
+    protected _appliedInputAttrKeys = new Set<string>();
 
     protected applyIdToHost = false;
 
@@ -80,7 +80,6 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
     protected abstract fromDom(raw: string): T | null;
 
     /** validazione custom (override dove serve) */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     protected validate(_v: T | null): { valid: boolean; message?: string } | null {
         return null;
     }
@@ -185,7 +184,7 @@ export abstract class BaseInput<T, ExtraState extends object = Record<string, ne
         this.applyDynamicInputAttributes();
     }
 
-    private runValidation(): void {
+    protected runValidation(): void {
         const s = this.state();
         const res = this.validate(s.value);
         if (res) {
