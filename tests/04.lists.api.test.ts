@@ -34,7 +34,7 @@ describe('List API and coalescing', () => {
     s.values.removeAt(2);                 // [6,2,24]
 
     expect(s.sum).toBe(32);
-    expect(seen.at(-1)).toBe(32);
+    expect(seen[seen.length - 1]).toBe(32);
   });
 
   it('IndexAttribute: on(objects[0]) vs on(objects[0].prop)', () => {

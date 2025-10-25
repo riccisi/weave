@@ -1,211 +1,209 @@
 // src/ui/Button.ts
 import { html } from 'uhtml';
-import { Component, StateInit } from './Component';
-import { ComponentRegistry } from './Registry';
+import { Component, type ComponentConfig } from './Component';
+import { FlyonColor, FlyonColorClasses } from './tokens';
 
-/** FlyonUI palette mapped to `btn-{color}` classes. */
-type FlyonColor =
-    | 'default' | 'primary' | 'secondary' | 'accent'
-    | 'info' | 'success' | 'warning' | 'error';
-
-/** Visual variants (see FlyonUI docs). */
 type Variant = 'solid' | 'soft' | 'outline' | 'text' | 'gradient';
 
-/** Sizes (FlyonUI: btn-xs/sm/(md)/lg/xl). */
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
-/** Shapes (rounded default, pill = rounded-full). */
 type Shape = 'rounded' | 'pill' | 'circle' | 'square';
 
 export interface ButtonState {
-    /** Label text (if empty + icon-only, provide ariaLabel via props). */
-    text: string;
-
-    /** Visual variant. */
-    variant: Variant;
-    /** Semantic color. */
-    color: FlyonColor;
-    /** Size. */
-    size: Size;
-    /** Extra horizontal padding. */
-    wide: boolean;
-    /** Full width. */
-    block: boolean;
-    /** Glass effect. */
-    glass: boolean;
-    /** Force active state. */
-    active: boolean;
-    /** Inline loading spinner. */
-    loading: boolean;
-    /** Shape. */
-    shape: Shape;
-
-    /** Left icon class (e.g. 'icon-[tabler--star] size-4.5'). */
-    iconLeft: string | null;
-    /** Right icon class. */
-    iconRight: string | null;
-
-    /** Custom color via CSS var --btn-color (e.g. '#1877F2'). */
-    customColor: string | null;
-
-    /** DX alias (deprecated) — mapped to `color`. */
-    kind?: 'primary' | 'secondary' | 'neutral';
+  text: string;
+  variant: Variant;
+  color: FlyonColor;
+  size: Size;
+  wide: boolean;
+  block: boolean;
+  glass: boolean;
+  active: boolean;
+  loading: boolean;
+  shape: Shape;
+  iconLeft: string | null;
+  iconRight: string | null;
+  customColor: string | null;
 }
 
-/**
- * FlyonUI Button
- * - Host element is a real <button> (no wrapper).
- * - Classes/attributes are applied to the host in a differential way
- *   (external classes like `join-item` are preserved).
- * - The inner content (icons/spinner/text) is rendered by `view()`.
- */
-export class Button extends Component<ButtonState> {
-    static wtype = 'button';
-
-    /** Bound click handler for proper cleanup. */
-    private _onClickBound?: (ev: MouseEvent) => void;
-
-    protected stateInit: StateInit = {
-        text: 'Button',
-        variant: 'solid',
-        color: 'default',
-        size: 'md',
-        wide: false,
-        block: false,
-        glass: false,
-        active: false,
-        loading: false,
-        shape: 'rounded',
-        iconLeft: null,
-        iconRight: null,
-        customColor: null,
-    };
-
-    /** Use a native <button> as host. */
-    protected hostTag(): string { return 'button'; }
-
-    /** Map deprecated `kind` prop to `color` (back-compat). */
-    protected beforeMount(): void {
-        const s = this.state();
-        const k = this.props.kind as ButtonState['kind'] | undefined;
-        if (k) s.color = k === 'neutral' ? 'default' : (k as FlyonColor);
-    }
-
-    /**
-     * Render only the inner content (icons/spinner/text).
-     * Classes/attributes are applied to the host here in a differential way.
-     */
-    protected view() {
-        const s = this.state();
-        const host = this.el();
-
-        // --- compute class set (only the ones we own) ---------------------------
-        const cls = this.hostClasses('btn');
-
-        // variant
-        switch (s.variant) {
-            case 'soft':     cls.add('btn-soft'); break;
-            case 'outline':  cls.add('btn-outline'); break;
-            case 'text':     cls.add('btn-text'); break;
-            case 'gradient': cls.add('btn-gradient'); break;
-            case 'solid':
-            default: break;
-        }
-
-        // color
-        const COLOR: Record<FlyonColor, string | null> = {
-            default: null,
-            primary: 'btn-primary',
-            secondary: 'btn-secondary',
-            accent: 'btn-accent',
-            info: 'btn-info',
-            success: 'btn-success',
-            warning: 'btn-warning',
-            error: 'btn-error',
-        };
-        const colorCls = COLOR[s.color];
-        if (colorCls) cls.add(colorCls);
-
-        // size
-        if (s.size !== 'md') cls.add(`btn-${s.size}`);
-
-        // shape
-        if (s.shape === 'pill') cls.add('rounded-full');
-        else if (s.shape === 'circle') cls.add('btn-circle');
-        else if (s.shape === 'square') cls.add('btn-square');
-
-        // layout modifiers
-        if (s.wide)  cls.add('btn-wide');
-        if (s.block) cls.add('btn-block');
-        if (s.glass) cls.add('glass');
-
-        // states
-        if (s.active) cls.add('btn-active');
-
-        // waves (optional plugin)
-        const waves = this.props.waves as boolean | undefined;
-        const wavesTone = (this.props.wavesTone as string | undefined) ?? 'light';
-        if (waves) {
-            cls.add('waves');
-            if (wavesTone) cls.add(`waves-${wavesTone}`);
-        }
-
-        // --- apply classes to host (diff: remove only what we applied before) ---
-        this.syncHostClasses(cls);
-
-        // --- attributes ----------------------------------------------------------
-        if (s.loading) host.setAttribute('aria-busy', 'true'); else host.removeAttribute('aria-busy');
-
-        // aria-label fallback if icon-only
-        const ariaLabel: string | undefined =
-            (this.props.ariaLabel as string | undefined) || (s.text ? undefined : 'Button');
-        if (ariaLabel) host.setAttribute('aria-label', ariaLabel); else host.removeAttribute('aria-label');
-
-        // custom color via CSS var
-        const custom = s.customColor ?? (this.props.customColor as string | undefined) ?? null;
-        if (!colorCls && custom) host.style.setProperty('--btn-color', custom);
-        else host.style.removeProperty('--btn-color');
-
-        // --- events (bound once) -------------------------------------------------
-        if (!this._onClickBound) {
-            const onClick = this.props.onClick as ((btn: Button, ev: MouseEvent) => void) | undefined;
-            if (onClick) {
-                this._onClickBound = (ev: MouseEvent) => onClick(this, ev);
-                host.addEventListener('click', this._onClickBound);
-            }
-        }
-
-        // --- inner content -------------------------------------------------------
-        const spinner = s.loading ? html`<span class="loading loading-spinner"></span>` : null;
-        const leftIcon = s.iconLeft ? html`<span class=${s.iconLeft}></span>` : null;
-        const rightIcon = s.iconRight ? html`<span class=${s.iconRight}></span>` : null;
-        const textNode = s.text ? html`${s.text}` : null;
-
-        return html`${leftIcon} ${spinner} ${textNode} ${rightIcon}`;
-    }
-
-    protected applyDisabled() {
-        super.applyDisabled();
-
-        const host = this.el();
-        const s = this.state();
-        const disabledEffective = s.disabled || s.loading;
-        if (disabledEffective) {
-            host.classList.add('btn-disabled');
-        } else {
-            host.classList.remove('btn-disabled');
-        }
-        host.toggleAttribute('disabled', disabledEffective);
-    }
-
-    /** Cleanup event listeners. */
-    protected beforeUnmount(): void {
-        if (this._onClickBound) {
-            this.el().removeEventListener('click', this._onClickBound);
-            this._onClickBound = undefined;
-        }
-    }
+export interface ButtonProps {
+  onClick?: (btn: Button, ev: MouseEvent) => void;
+  ariaLabel?: string;
+  waves?: boolean;
+  wavesTone?: string;
+  /** Additional CSS classes to merge in */
+  className?: string;
+  /** Legacy "kind" prop to map to color */
+  kind?: 'primary' | 'secondary' | 'neutral';
 }
 
-// AUTO-REGISTER on module import
-ComponentRegistry.registerClass(Button);
+export class Button extends Component<ButtonState, ButtonProps> {
+  private _appliedClasses: Set<string> = new Set();
+  private _onClickBound?: (ev: MouseEvent) => void;
+
+  protected stateInit = {
+    text: 'Button',
+    variant: 'solid' as Variant,
+    color: 'default' as FlyonColor,
+    size: 'md' as Size,
+    wide: false,
+    block: false,
+    glass: false,
+    active: false,
+    loading: false,
+    shape: 'rounded' as Shape,
+    iconLeft: null as string | null,
+    iconRight: null as string | null,
+    customColor: null as string | null
+  } satisfies ButtonState;
+
+  protected override hostTag(): string {
+    return 'button';
+  }
+
+  protected override beforeMount(): void {
+    const s = this.state();
+    const kind = this.props.kind;
+    if (kind) {
+      s.color = kind === 'neutral' ? 'default' : (kind as FlyonColor);
+    }
+  }
+
+  protected override applyDisabled(): void {
+    super.applyDisabled();
+
+    const s = this.state();
+    const host = this.el();
+    const effectiveDisabled = !!(s.disabled || s.loading);
+
+    if (effectiveDisabled) {
+      host.classList.add('btn-disabled');
+    } else {
+      host.classList.remove('btn-disabled');
+    }
+
+    host.toggleAttribute('disabled', effectiveDisabled);
+
+    if (s.loading) {
+      host.setAttribute('aria-busy', 'true');
+    } else {
+      host.removeAttribute('aria-busy');
+    }
+  }
+
+  protected override view() {
+    const s = this.state();
+    const host = this.el();
+    const p = this.props;
+
+    const classes = new Set<string>(['btn']);
+
+    switch (s.variant) {
+      case 'soft':
+        classes.add('btn-soft');
+        break;
+      case 'outline':
+        classes.add('btn-outline');
+        break;
+      case 'text':
+        classes.add('btn-text');
+        break;
+      case 'gradient':
+        classes.add('btn-gradient');
+        break;
+      case 'solid':
+      default:
+        break;
+    }
+
+    const colorCls = FlyonColorClasses.button(s.color);
+    if (colorCls) classes.add(colorCls);
+
+    if (s.size !== 'md') {
+      classes.add(`btn-${s.size}`);
+    }
+
+    if (s.shape === 'pill') {
+      classes.add('rounded-full');
+    } else if (s.shape === 'circle') {
+      classes.add('btn-circle');
+    } else if (s.shape === 'square') {
+      classes.add('btn-square');
+    }
+
+    if (s.wide) classes.add('btn-wide');
+    if (s.block) classes.add('btn-block');
+    if (s.glass) classes.add('glass');
+
+    if (s.active) {
+      classes.add('btn-active');
+    }
+
+    if (p.waves) {
+      classes.add('waves');
+      if (p.wavesTone) {
+        classes.add(`waves-${p.wavesTone}`);
+      }
+    }
+
+    if (typeof p.className === 'string') {
+      for (const token of p.className.split(/\s+/).filter(Boolean)) {
+        classes.add(token);
+      }
+    }
+
+    for (const cls of this._appliedClasses) {
+      if (!classes.has(cls)) {
+        host.classList.remove(cls);
+      }
+    }
+    for (const cls of classes) {
+      host.classList.add(cls);
+    }
+    this._appliedClasses = new Set(classes);
+
+    const ariaLabel = p.ariaLabel ?? (s.text ? undefined : 'Button');
+    if (ariaLabel) {
+      host.setAttribute('aria-label', ariaLabel);
+    } else {
+      host.removeAttribute('aria-label');
+    }
+
+    if (!colorCls && s.customColor) {
+      host.style.setProperty('--btn-color', s.customColor);
+    } else {
+      host.style.removeProperty('--btn-color');
+    }
+
+    if (!this._onClickBound && p.onClick) {
+      this._onClickBound = (ev: MouseEvent) => p.onClick!(this, ev);
+      host.addEventListener('click', this._onClickBound);
+    }
+
+    const spinner = s.loading
+      ? html`<span class="loading loading-spinner"></span>`
+      : null;
+    const leftIcon = s.iconLeft
+      ? html`<span class=${s.iconLeft}></span>`
+      : null;
+    const rightIcon = s.iconRight
+      ? html`<span class=${s.iconRight}></span>`
+      : null;
+    const labelNode = s.text ? html`${s.text}` : null;
+
+    return html`${leftIcon} ${spinner} ${labelNode} ${rightIcon}`;
+  }
+
+  protected override beforeUnmount(): void {
+    if (this._onClickBound) {
+      this.el().removeEventListener('click', this._onClickBound);
+      this._onClickBound = undefined;
+    }
+    this._appliedClasses.clear();
+  }
+}
+
+export function button(
+  cfg: ComponentConfig<ButtonState, ButtonProps> = {}
+): Button {
+  return new Button(cfg);
+}

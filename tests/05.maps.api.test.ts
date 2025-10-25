@@ -5,7 +5,7 @@ import { State } from '../src/state/State';
 describe('MapAttribute basics + refs', () => {
   it('get/set and derived', () => {
     const s = new State({
-      settings: new Map([['theme','dark'], ['version', 1]]),
+      settings: new Map<string, string | number>([['theme','dark'], ['version', 1]]),
       isDark: (st: State) => st.settings.get('theme') === 'dark'
     });
     expect(s.isDark).toBe(true);

@@ -1,200 +1,168 @@
 import { html } from 'uhtml';
-import { Component } from './Component';
-import type { ComponentConfig } from './Registry';
-import { ComponentRegistry } from './Registry';
+import { Component, type ComponentConfig } from './Component';
+import type { Component as BaseComponent } from './Component';
 import type { Layout, LayoutConfig } from './layouts/Layout';
 import { LayoutRegistry } from './layouts/LayoutRegistry';
 
-/**
- * Generic container:
- * - materializza i figli (istanze o config wtype),
- * - li monta off-DOM per ereditare lo State del parent,
- * - li rende nella propria view,
- * - applica un Layout (facoltativo) dopo ogni commit.
- *
- * Nessuna classe CSS di default: lo stile del wrapper è responsabilità del Layout.
- */
-export class Container<S extends object = any> extends Component<S> {
-    static wtype = 'container';
-
-    /** Component children (istanze) gestiti dal container */
-    protected items: Component[] = [];
-
-    /** Layout applicato al wrapper del container (join, vbox, grid, …) */
-    private _layout?: Layout;
-
-    /** Flag per coalescere applyLayout() nella stessa microtask */
-    private _layoutScheduled = false;
-
-    /** Snapshot degli state.disabled dei figli quando il container li forza. */
-    private _disabledSnapshots = new WeakMap<Component, boolean>();
-
-    /** Unsubscribe dal listener che propaga disabled ai figli. */
-    private _disabledCascadeUnsub?: () => void;
-
-    constructor(props: Record<string, any> = {}) {
-        super(props);
-    }
-
-    /**
-     * Lifecycle: prima del primo render.
-     * - istanzia il layout dalla props (oggetto o { type, ... }),
-     * - normalizza i children (istanze o config) e li monta off-DOM.
-     */
-    protected beforeMount(): void {
-        // 1) Layout
-        this._layout = LayoutRegistry.create(
-            this.props.layout as (Layout | LayoutConfig | undefined)
-        );
-
-        // 2) Children: accettiamo `items` (canonico) o `children` (alias ergonomico)
-        const incoming = (this.props.items ?? this.props.children) as
-            | Array<Component | ComponentConfig>
-            | undefined;
-
-        if (incoming) {
-            // materializza istanze
-            this.items = incoming.map((it) =>
-                it instanceof Component ? it : ComponentRegistry.create(it)
-            );
-
-            // mount off-DOM per ereditare state/ctx, senza inserirli ancora nel DOM del container
-            for (const child of this.items) {
-                const staging = document.createElement('div');
-                child.mount(staging, this.state());
-            }
-        } else {
-            this.items = [];
-        }
-
-        this._disabledCascadeUnsub = this.state().on(
-            'disabled',
-            (disabled: boolean) => this.cascadeDisabled(disabled),
-            { immediate: true }
-        );
-    }
-
-    /**
-     * View: inserisce gli host dei figli nel wrapper del container.
-     * Il Layout verrà applicato dopo il commit (doRender()).
-     */
-    protected view() {
-        return html`${this.items.map((c) => c.el())}`;
-    }
-
-    /**
-     * Dopo ogni commit: prima render, poi applicazione layout (idempotente).
-     */
-    protected doRender(): void {
-        super.doRender();
-        this.applyLayout();
-    }
-
-    // -------------------------------------------------------------------------
-    //  API dinamiche (add/remove) con coalescing del layout
-    // -------------------------------------------------------------------------
-
-    /**
-     * Aggiunge un figlio.
-     * - monta off-DOM (eredita lo state subito),
-     * - chiede re-render e applyLayout coalescato.
-     */
-    public add(child: Component): this {
-        this.items.push(child);
-        const staging = document.createElement('div');
-        child.mount(staging, this.state());
-        this.syncChildDisabled(child, this.state().disabled);
-        this.requestRender();
-        this.requestLayout();
-        return this;
-    }
-
-    /**
-     * Rimuove un figlio:
-     * - unmount del figlio,
-     * - re-render e applyLayout coalescato.
-     */
-    public remove(child: Component): this {
-        const idx = this.items.indexOf(child);
-        if (idx >= 0) {
-            this.items.splice(idx, 1);
-            child.unmount();
-            this._disabledSnapshots.delete(child);
-            this.requestRender();
-            this.requestLayout();
-        }
-        return this;
-    }
-
-    /**
-     * Coalesca le richieste di layout nella stessa microtask.
-     * Utile quando arrivano più add/remove consecutivi.
-     */
-    protected requestLayout(): void {
-        if (this._layoutScheduled) return;
-        this._layoutScheduled = true;
-        queueMicrotask(() => {
-            this._layoutScheduled = false;
-            this.applyLayout();
-        });
-    }
-
-    /** Applica (o ri-applica) il layout in modo idempotente. */
-    protected applyLayout(): void {
-        if (!this._layout) return;
-        const host = this.el();
-        if (!host) return;
-        this._layout.apply({
-            host,
-            children: this.items,
-            state: this.state(),
-            props: this.props,
-        });
-    }
-
-    /**
-     * Lifecycle: prima dello smontaggio.
-     * - consente al layout di ripulire classi/effetti,
-     * - smonta tutti i figli,
-     * - poi delega al super per rimuovere l'host.
-     */
-    public beforeUnmount(): void {
-        if (this._layout) {
-            const host = this.el();
-            if (host) {
-                this._layout.dispose?.({
-                    host,
-                    children: this.items,
-                    state: this.state(),
-                    props: this.props,
-                });
-            }
-        }
-        this._disabledCascadeUnsub?.();
-        this._disabledCascadeUnsub = undefined;
-        for (const child of this.items) child.unmount();
-        this._disabledSnapshots = new WeakMap<Component, boolean>();
-    }
-
-    /** Propaga il disabled del container verso tutti i figli. */
-    private cascadeDisabled(disabled: boolean): void {
-        for (const child of this.items) this.syncChildDisabled(child, disabled);
-    }
-
-    /** Sincronizza il disabled di un singolo figlio con il valore del container. */
-    private syncChildDisabled(child: Component, containerDisabled: boolean): void {
-        const childState = child.state() as { disabled: boolean };
-        if (containerDisabled) {
-            if (!this._disabledSnapshots.has(child)) {
-                this._disabledSnapshots.set(child, childState.disabled);
-            }
-            if (!childState.disabled) childState.disabled = true;
-        } else if (this._disabledSnapshots.has(child)) {
-            const previous = this._disabledSnapshots.get(child)!;
-            this._disabledSnapshots.delete(child);
-            if (childState.disabled !== previous) childState.disabled = previous;
-        }
-    }
+export interface ContainerSchema {
+  // Additional reactive keys specific to containers can be declared by subclasses.
 }
 
-ComponentRegistry.registerClass(Container);
+export interface ContainerProps {
+  /** Optional layout description (can be { type: 'join', ... } etc.) */
+  layout?: LayoutConfig | Layout;
+  /** Children components already constructed via factories. */
+  items?: Array<BaseComponent<any, any>>;
+  /** Extra class names for the host */
+  className?: string;
+}
+
+export class Container<
+  Schema extends object = ContainerSchema,
+  Props extends ContainerProps = ContainerProps
+> extends Component<Schema, Props> {
+  protected items: BaseComponent<any, any>[] = [];
+  private _layout?: Layout;
+  private _layoutScheduled = false;
+
+  private _disabledSnapshots = new WeakMap<BaseComponent<any, any>, boolean>();
+  private _disabledCascadeUnsub?: () => void;
+
+  protected stateInit = {} as Record<string, any>;
+
+  /**
+   * Before mount:
+   * - instantiate the layout (if provided)
+   * - normalize incoming children and mount them off-DOM to inherit our state
+   */
+  protected override beforeMount(): void {
+    this._layout = LayoutRegistry.create(this.props.layout);
+
+    const incoming = this.props.items ?? [];
+    this.items = Array.from(incoming);
+
+    for (const child of this.items) {
+      const staging = document.createElement('div');
+      child.mount(staging, this.state());
+      this.syncChildDisabled(child, this.state().disabled);
+    }
+
+    this._disabledCascadeUnsub = this.state().on(
+      'disabled',
+      (disabled: boolean) => this.cascadeDisabled(disabled),
+      { immediate: true }
+    );
+  }
+
+  protected override afterMount(): void {
+    super.afterMount();
+    this.applyLayoutNow();
+  }
+
+  /** view(): render child hosts within our host */
+  protected override view() {
+    return html`${this.items.map((c) => c.el())}`;
+  }
+
+  /** After render, reapply the layout. */
+  protected override doRender(): void {
+    super.doRender();
+    this.applyLayoutNow();
+  }
+
+  /** Add a child component at runtime. */
+  public add(child: BaseComponent<any, any>): this {
+    this.items.push(child);
+    const staging = document.createElement('div');
+    child.mount(staging, this.state());
+    this.syncChildDisabled(child, this.state().disabled);
+    this.requestRender();
+    this.requestLayout();
+    return this;
+  }
+
+  /** Remove a child component at runtime. */
+  public remove(child: BaseComponent<any, any>): this {
+    const idx = this.items.indexOf(child);
+    if (idx >= 0) {
+      this.items.splice(idx, 1);
+      child.unmount();
+      this._disabledSnapshots.delete(child);
+      this.requestRender();
+      this.requestLayout();
+    }
+    return this;
+  }
+
+  /** Coalesce layout requests within the same microtask. */
+  protected requestLayout(): void {
+    if (this._layoutScheduled) return;
+    this._layoutScheduled = true;
+    queueMicrotask(() => {
+      this._layoutScheduled = false;
+      this.applyLayoutNow();
+    });
+  }
+
+  /** Apply/reapply the active layout to the host. */
+  private applyLayoutNow(): void {
+    if (!this._layout) return;
+    const host = this.el();
+    if (!host) return;
+    this._layout.apply({
+      host,
+      children: this.items,
+      state: this.state(),
+      props: this.props
+    });
+  }
+
+  private cascadeDisabled(disabled: boolean): void {
+    for (const child of this.items) this.syncChildDisabled(child, disabled);
+  }
+
+  private syncChildDisabled(child: BaseComponent<any, any>, containerDisabled: boolean): void {
+    const childState = child.state() as { disabled: boolean };
+    if (containerDisabled) {
+      if (!this._disabledSnapshots.has(child)) {
+        this._disabledSnapshots.set(child, childState.disabled);
+      }
+      if (!childState.disabled) childState.disabled = true;
+    } else if (this._disabledSnapshots.has(child)) {
+      const previous = this._disabledSnapshots.get(child)!;
+      this._disabledSnapshots.delete(child);
+      if (childState.disabled !== previous) childState.disabled = previous;
+    }
+  }
+
+  /** Cleanup: unmount children, dispose layout, then delegate to super. */
+  public override unmount(): void {
+    this._disabledCascadeUnsub?.();
+    this._disabledCascadeUnsub = undefined;
+
+    if (this._layout && this.el()) {
+      this._layout.dispose?.({
+        host: this.el(),
+        children: this.items,
+        state: this.state(),
+        props: this.props
+      });
+    }
+
+    for (const child of this.items) {
+      child.unmount();
+    }
+    this.items = [];
+    this._layout = undefined;
+    this._disabledSnapshots = new WeakMap();
+
+    super.unmount();
+  }
+}
+
+export function container<
+  Schema extends object = ContainerSchema,
+  Props extends ContainerProps = ContainerProps
+>(cfg: ComponentConfig<Schema, Props> = {} as ComponentConfig<Schema, Props>): Container<Schema, Props> {
+  return new Container<Schema, Props>(cfg);
+}
