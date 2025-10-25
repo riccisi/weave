@@ -16,24 +16,26 @@ const BRACED = /^\{\s*(.+?)\s*\}$/;
  * subscribing to, and working with reactive attributes and derived values, organized
  * in a hierarchical parent-child structure.
  */
-export class State {
+export class State<TSchema extends Record<string, any> = Record<string, any>> {
+
+    [key: string]: any;
 
     readonly _runtime: ReactiveRuntime;
     private attrs = new Map<string, Attribute<any>>();
     private declared = new Set<string>();
-    private proxy!: State;
+    private proxy!: State<TSchema>;
 
-    constructor(initial: Record<string, any> = {}, private parent?: State, runtime?: ReactiveRuntime) {
+    constructor(initial: TSchema = {} as TSchema, private parent?: State<any>, runtime?: ReactiveRuntime) {
         this._runtime = runtime ?? (parent ? (parent as any)._runtime : new ReactiveRuntime());
 
-        this.recordSchema(initial);
+        this.recordSchema(initial as Record<string, any>);
         this.proxy = this.createProxy();
 
-        const {aliasExprs, deriveds} = this.buildConcrete(initial);
+        const {aliasExprs, deriveds} = this.buildConcrete(initial as Record<string, any>);
         this.resolveAliases(aliasExprs);
         this.createDerived(deriveds);
 
-        return this.proxy;
+        return this.proxy as State<TSchema> & TSchema & Record<string, any>;
     }
 
     // ---------- Lifecycle (3-pass build) ----------
@@ -44,7 +46,7 @@ export class State {
     }
 
     /** Crea il Proxy pubblico (necessario prima di costruire le derivate). */
-    private createProxy(): State {
+    private createProxy(): State<TSchema> {
         return new Proxy(this as any, {
             get: (t, prop, r) => {
                 if (typeof prop !== 'string') return Reflect.get(t, prop, r);
@@ -91,7 +93,7 @@ export class State {
     }
 
     /** Passo 3: crea attributi derivati. */
-    private createDerived(deriveds: Array<[string, (s: State) => any]>) {
+    private createDerived(deriveds: Array<[string, (s: State<any>) => any]>) {
         for (const [k, fn] of deriveds) {
             this.attrs.set(k, new DerivedAttribute(k, this._runtime, () => this.public(), fn));
         }
@@ -107,8 +109,8 @@ export class State {
     }
 
     /** Proxy pubblico di questo State. */
-    public(): State {
-        return this.proxy;
+    public(): State<TSchema> & TSchema & Record<string, any> {
+        return this.proxy as State<TSchema> & TSchema & Record<string, any>;
     }
 
     // ---------- Read/Write ----------

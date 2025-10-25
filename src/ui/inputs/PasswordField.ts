@@ -1,25 +1,28 @@
 import { TextField, type TextFieldState } from './TextField';
-import { ComponentRegistry } from '../Registry';
+import type { ComponentConfig } from '../Component';
+import type { BaseInputProps, BaseInputState } from './BaseInput';
 
 export class PasswordField extends TextField {
-    static override wtype = 'passwordfield';
+  protected override extraStateInit(): TextFieldState {
+    return {
+      ...super.extraStateInit(),
+      spellcheck: false
+    } satisfies TextFieldState;
+  }
 
-    protected override extraStateInit(): TextFieldState {
-        return {
-            ...super.extraStateInit(),
-            spellcheck: false,
-        };
-    }
+  protected override inputType(): string { return 'password'; }
 
-    protected override inputType(): string { return 'password'; }
-
-    protected override inputAttributes(): Record<string, any> {
-        const base = super.inputAttributes();
-        return {
-            ...base,
-            autocomplete: this.props.autocomplete ?? 'current-password',
-        };
-    }
+  protected override inputAttributes(): Record<string, any> {
+    const base = super.inputAttributes();
+    return {
+      ...base,
+      autocomplete: this.props.autocomplete ?? 'current-password'
+    };
+  }
 }
 
-ComponentRegistry.registerClass(PasswordField);
+export function passwordfield(
+  cfg: ComponentConfig<BaseInputState<string> & TextFieldState, BaseInputProps> = {}
+): PasswordField {
+  return new PasswordField(cfg);
+}

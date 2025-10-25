@@ -1,32 +1,33 @@
 import type { Meta, StoryObj } from '@storybook/html';
 import { mountComponent } from '../testing/mount';
-import { Container } from '../Container';
-import { Button } from '../Button';
-import '../layouts/JoinLayout'; // importa per auto-register
+import { container } from '../Container';
+import { button } from '../Button';
+import { joinLayout } from '../layouts/factories';
+import '../layouts/JoinLayout';
 
 const meta = {
-    title: 'Weave/Layouts/Join',
-    render: (args) => {
-        const items = [
-            new Button({ text: 'Left', color: 'primary' }),
-            new Button({ text: 'Middle', color: 'primary', variant: 'outline' }),
-            new Button({ text: 'Right', color: 'primary' }),
-        ];
-        const c = new Container({
-            ...args,
-            layout: { type: 'join', orientation: args.orientation, className: args.className },
-            items
-        });
-        return mountComponent(c);
-    },
-    argTypes: {
-        orientation: { control: 'select', options: ['horizontal', 'vertical'] },
-        className: { control: 'text' },
-    },
-    args: {
-        orientation: 'horizontal',
-        className: 'rounded-md',
-    },
+  title: 'Weave/Layouts/Join',
+  render: (args) => {
+    const items = [
+      button({ text: 'Left', color: 'primary' }),
+      button({ text: 'Middle', color: 'primary', variant: 'outline' }),
+      button({ text: 'Right', color: 'primary' })
+    ];
+    const c = container({
+      ...args,
+      layout: joinLayout({ orientation: args.orientation, className: args.className }),
+      items
+    });
+    return mountComponent(c);
+  },
+  argTypes: {
+    orientation: { control: 'select', options: ['horizontal', 'vertical'] },
+    className: { control: 'text' }
+  },
+  args: {
+    orientation: 'horizontal',
+    className: 'rounded-md'
+  }
 } satisfies Meta;
 
 export default meta;
@@ -35,15 +36,14 @@ type Story = StoryObj<typeof meta>;
 export const AsLayout: Story = {};
 
 export const DeepTargetDemo: Story = {
-    render: () => {
-        // Dimostrazione: se in futuro un componente espone joinTarget(), il layout può usarlo
-        const a = new Button({ text: 'A' });
-        const b = new Button({ text: 'B', variant: 'outline' });
-        const c = new Button({ text: 'C' });
-        const container = new Container({
-            layout: { type: 'join', orientation: 'horizontal', deepTarget: true, className: 'rounded-lg' },
-            items: [a, b, c]
-        });
-        return mountComponent(container);
-    },
+  render: () => {
+    const a = button({ text: 'A' });
+    const b = button({ text: 'B', variant: 'outline' });
+    const c = button({ text: 'C' });
+    const joinContainer = container({
+      layout: joinLayout({ orientation: 'horizontal', deepTarget: true, className: 'rounded-lg' }),
+      items: [a, b, c]
+    });
+    return mountComponent(joinContainer);
+  }
 };
