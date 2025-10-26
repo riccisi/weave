@@ -2,33 +2,17 @@ import { render } from 'uhtml';
 import { State } from '../state/State';
 import { ReactiveRuntime } from '../state/ReactiveRuntime';
 
-export type StateInit = Record<string, any>;
-
-/**
- * Built-in reactive keys that every component exposes.
- * These keys never need to trigger a full render; instead we update
- * host attributes directly when they change.
- */
 export interface BuiltInComponentState {
-  /** If true, component is visually hidden (display:none). */
+  /** If true, the host is visually hidden (display:none) */
   hidden: boolean;
-  /** If true, also applies aria-hidden + (optionally) inert for focus blocking. */
-  hiddenInert?: boolean;
-
-  /** If true, component should be considered disabled. */
-  disabled: boolean;
-  /** If true, also applies inert (so it can't be focused / interacted). */
-  disabledInert?: boolean;
+  /** If true, hidden hosts are also taken out of the a11y tree via inert/aria-hidden */
+  hiddenInert: boolean;
 }
 
-/**
- * Public configuration accepted by each component factory / constructor.
- * - top-level keys matching the reactive schema override that key
- * - top-level keys matching props become non-reactive props
- * - `state` allows callers to merge extra reactive keys in the component State
- */
-export type ComponentConfig<Schema extends object, Props extends object> =
-  Partial<Schema & BuiltInComponentState> &
+export type ComponentConfig<
+  S extends BuiltInComponentState = BuiltInComponentState,
+  Props extends Record<string, any> = Record<string, any>
+> = Partial<S> &
   Partial<Props> & {
     id?: string;
     className?: string;
@@ -46,16 +30,15 @@ type ClassToken =
  * Base class for all Weave components.
  * - Owns a stable DOM host element (see `hostTag()`)
  * - Creates a reactive `State` composed of:
- *   - built-in component state (hidden/disabled/…)
- *   - subclass defaults via `stateInit`/`schema()`
+ *   - built-in component state (hidden/…)
+ *   - subclass defaults via `initialState()`
  *   - user overrides (top-level config)
  *   - extra keys from `config.state`
  * - Provides lifecycle hooks (beforeMount / afterMount / beforeUnmount)
  * - Performs rendering via uhtml and re-renders when schema keys change
  */
 export abstract class Component<
-  Schema extends object = any,
-  Props extends object = any
+  S extends BuiltInComponentState = BuiltInComponentState
 > {
   /** Reverse lookup: DOM host → component instance. */
   private static _byHost = new WeakMap<HTMLElement, Component>();
@@ -63,16 +46,17 @@ export abstract class Component<
   /** Global incremental id sequence shared by all components. */
   private static _idSeq = 0;
 
-  protected _state!: State<Record<string, any>> & Schema & BuiltInComponentState;
+  protected _state!: State & S;
   protected _host!: HTMLElement;
-  protected _parentState?: State<any>;
   protected _mounted = false;
+  protected _parentState?: State;
 
-  /** Config provided at construction time. */
-  private readonly _incomingConfig: ComponentConfig<Schema, Props>;
+  protected props: Record<string, any> = {};
 
-  /** Non-reactive props resolved from the config. */
-  protected props!: Props & { className?: string; id?: string };
+  protected _unsubs: Array<() => void> = [];
+  protected _renderQueued = false;
+
+  private readonly _incomingProps: ComponentConfig<S, any>;
 
   /** Component-wide unique id (overridable via config.id). */
   private readonly _id: string;
@@ -84,19 +68,10 @@ export abstract class Component<
   private _managedHostClasses: Set<string> = new Set();
 
   /** Normalized `className` tokens provided via props (never mutated). */
-  private _propClassNames: string[] = [];
+  protected _propClassNames: string[] = [];
 
-  /** Subscriptions to state changes; we remove these on unmount. */
-  private _unsubs: Array<() => void> = [];
-
-  /** Microtask render scheduler flag. */
-  private _renderQueued = false;
-
-  /** Optional static schema; subclasses may override `schema()` instead. */
-  protected stateInit?: StateInit;
-
-  constructor(config: ComponentConfig<Schema, Props> = {} as ComponentConfig<Schema, Props>) {
-    this._incomingConfig = config;
+  constructor(config: ComponentConfig<S, any> = {} as ComponentConfig<S, any>) {
+    this._incomingProps = config;
     this._id = this.resolveComponentId(config as Record<string, any>);
   }
 
@@ -157,17 +132,14 @@ export abstract class Component<
   }
 
   /**
-   * Return the reactive schema for this component.
-   * Includes built-in visibility and disabled keys so they're always available and bindable.
+   * Returns the initial reactive state for this component.
+   * Subclasses must call `super.initialState()` and merge their own defaults.
    */
-  protected schema(): Record<string, any> {
+  protected initialState(): S {
     return {
       hidden: false,
-      hiddenInert: false,
-      disabled: false,
-      disabledInert: false,
-      ...(this.stateInit ?? {})
-    };
+      hiddenInert: false
+    } as S;
   }
 
   /** Produce the component template. Keep it pure; no side effects here. */
@@ -181,16 +153,22 @@ export abstract class Component<
   }
 
   /** Lifecycle: before the initial render (state/props/host already created). */
-  protected beforeMount(): void { /* no-op */ }
+  protected beforeMount(): void {
+    /* no-op */
+  }
 
   /** Lifecycle: after the first render has committed to the DOM. */
-  protected afterMount(): void { /* no-op */ }
+  protected afterMount(): void {
+    /* no-op */
+  }
 
   /** Lifecycle: right before removal from the DOM. */
-  protected beforeUnmount(): void { /* no-op */ }
+  protected beforeUnmount(): void {
+    /* no-op */
+  }
 
   /** Access the reactive state (typed with Schema + built-ins). */
-  public state(): State<Record<string, any>> & Schema & BuiltInComponentState {
+  public state(): State & S {
     return this._state;
   }
 
@@ -221,15 +199,12 @@ export abstract class Component<
 
   /**
    * Mount the component into a container, optionally inheriting a parent State.
-   * - creates a reactive State from the schema
+   * - creates a reactive State from the initial state
    * - creates a host element (using `hostTag()`)
    * - attaches the host to the DOM
    * - wires lifecycle + subscriptions
    */
-  public mount(
-    target: Element | string,
-    parent?: Component | State<any>
-  ): this {
+  public mount(target: Element | string, parent?: Component | State<any>): this {
     if (this._mounted) return this;
 
     const container =
@@ -238,33 +213,36 @@ export abstract class Component<
         : (target as HTMLElement | null);
     if (!container) throw new Error('Mount target not found');
 
-    if (parent instanceof Component) this._parentState = parent.state();
-    else if (parent) this._parentState = parent;
+    if (parent instanceof Component) {
+      this._parentState = parent.state();
+    } else if (parent instanceof State) {
+      this._parentState = parent;
+    } else {
+      this._parentState = undefined;
+    }
 
-    const baseSchema = this.schema();
-    const { stateOverrides, props } = this.splitOptions(
-      this._incomingConfig,
-      baseSchema
-    );
-    this.props = props as Props & { className?: string; id?: string };
+    const base = this.initialState();
+    const { stateOverrides, props } = this.splitOptions(this._incomingProps, base);
+    this.props = props;
     this._propClassNames = Component.normalizeClassProp(this.props.className);
 
     const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime;
-    const customExtra =
-      this._incomingConfig && typeof this._incomingConfig.state === 'object'
-        ? (this._incomingConfig.state ?? {})
+    const extraState =
+      this._incomingProps && typeof this._incomingProps.state === 'object'
+        ? this._incomingProps.state ?? {}
         : {};
-    const initial = {
-      ...baseSchema,
-      ...(customExtra ?? {}),
-      ...stateOverrides
-    } as Schema & BuiltInComponentState & Record<string, any>;
 
-    this._state = new State(initial, this._parentState, runtime) as State<
-      Record<string, any>
-    > &
-      Schema &
-      BuiltInComponentState;
+    const parentState = this._parentState;
+
+    this._state = new State(
+      {
+        ...base,
+        ...(extraState ?? {}),
+        ...(stateOverrides as Record<string, any>)
+      },
+      parentState,
+      runtime
+    ) as State & S;
 
     this._host = document.createElement(this.hostTag());
     if (typeof this.props.className === 'string') {
@@ -276,26 +254,22 @@ export abstract class Component<
 
     this.beforeMount();
 
-    for (const key of Object.keys(baseSchema)) {
+    const watchedKeys = new Set<string>([
+      ...Object.keys(base ?? {}),
+      ...Object.keys(extraState ?? {})
+    ]);
+
+    for (const key of watchedKeys) {
       if (key === 'hidden' || key === 'hiddenInert') {
-        this._unsubs.push(
-          this._state.on(key, () => this.applyVisibility(), { immediate: false })
-        );
-      } else if (key === 'disabled' || key === 'disabledInert') {
-        this._unsubs.push(
-          this._state.on(key, () => this.applyDisabled(), { immediate: false })
-        );
+        this._unsubs.push(this._state.on(key, () => this.applyHidden(), { immediate: false }));
       } else {
-        this._unsubs.push(
-          this._state.on(key, () => this.requestRender(), { immediate: false })
-        );
+        this._unsubs.push(this._state.on(key, () => this.requestRender(), { immediate: false }));
       }
     }
 
     container.appendChild(this._host);
     this.doRender();
-    this.applyVisibility();
-    this.applyDisabled();
+    this.applyHidden();
 
     this._mounted = true;
 
@@ -316,13 +290,15 @@ export abstract class Component<
     for (const off of this._unsubs) off();
     this._unsubs = [];
 
-    if (this._host.parentElement) {
+    if (this._host?.parentElement) {
       this._host.parentElement.removeChild(this._host);
     }
     Component._byHost.delete(this._host);
 
     this._mounted = false;
     this._managedHostClasses = new Set();
+    this._propClassNames = [];
+    this.props = {};
   }
 
   /** Find a component instance from a DOM node, if any. */
@@ -370,8 +346,7 @@ export abstract class Component<
     queueMicrotask(() => {
       this._renderQueued = false;
       this.doRender();
-      this.applyVisibility();
-      this.applyDisabled();
+      this.applyHidden();
     });
   }
 
@@ -380,10 +355,8 @@ export abstract class Component<
     render(this._host, this.view());
   }
 
-  /**
-   * Apply visibility on the host without triggering a render.
-   */
-  protected applyVisibility(): void {
+  /** Apply visibility on the host without triggering a render. */
+  protected applyHidden(): void {
     const s = this.state();
     const host = this._host;
     if (!host) return;
@@ -393,60 +366,39 @@ export abstract class Component<
       host.setAttribute('aria-hidden', 'true');
       if (s.hiddenInert) {
         host.setAttribute('inert', '');
+      } else {
+        host.removeAttribute('inert');
       }
     } else {
       host.style.display = '';
       host.removeAttribute('aria-hidden');
-      if (!s.disabled && !s.disabledInert) {
-        host.removeAttribute('inert');
-      }
+      host.removeAttribute('inert');
     }
   }
 
   /**
-   * Apply disabled state on the host without triggering a render.
-   */
-  protected applyDisabled(): void {
-    const s = this.state();
-    const host = this._host;
-    if (!host) return;
-
-    if (s.disabled) {
-      host.setAttribute('aria-disabled', 'true');
-      if (s.disabledInert) {
-        host.setAttribute('inert', '');
-      }
-    } else {
-      host.removeAttribute('aria-disabled');
-      if (!s.hidden && !s.hiddenInert) {
-        host.removeAttribute('inert');
-      }
-    }
-  }
-
-  /**
-   * Split raw options into reactive overrides (schema keys) vs plain props.
+   * Split raw options into reactive overrides (initial state keys) vs plain props.
    */
   protected splitOptions(
-    cfg: ComponentConfig<Schema, Props>,
-    schema: Record<string, any>
+    cfg: ComponentConfig<S, any>,
+    base: S
   ): {
-    stateOverrides: Partial<Schema & BuiltInComponentState>;
-    props: Partial<Props> & { className?: string; id?: string };
+    stateOverrides: Partial<S>;
+    props: Record<string, any>;
   } {
-    const schemaKeys = new Set(Object.keys(schema));
+    const stateKeys = new Set(Object.keys(base ?? {}));
     const stateOverrides: Record<string, any> = {};
     const props: Record<string, any> = {};
 
     for (const [k, v] of Object.entries(cfg ?? {})) {
       if (k === 'state') continue;
-      if (schemaKeys.has(k)) stateOverrides[k] = v;
+      if (stateKeys.has(k)) stateOverrides[k] = v;
       else props[k] = v;
     }
 
     return {
-      stateOverrides: stateOverrides as Partial<Schema & BuiltInComponentState>,
-      props: props as Partial<Props> & { className?: string; id?: string }
+      stateOverrides: stateOverrides as Partial<S>,
+      props
     };
   }
 

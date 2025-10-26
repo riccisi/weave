@@ -1,5 +1,5 @@
 import type { ComponentConfig } from './Component';
-import { Container, type ContainerProps, type ContainerSchema } from './Container';
+import { Container, type ContainerProps, type ContainerState } from './Container';
 import type { LayoutConfig } from './layouts/Layout';
 
 export type JoinOrientation = 'horizontal' | 'vertical';
@@ -11,17 +11,16 @@ export interface JoinProps extends ContainerProps {
 }
 
 export class Join<
-  Schema extends object = ContainerSchema,
-  Props extends JoinProps = JoinProps
-> extends Container<Schema, Props> {
-  constructor(cfg: ComponentConfig<Schema, Props> = {} as ComponentConfig<Schema, Props>) {
+  S extends ContainerState = ContainerState
+> extends Container<S> {
+  constructor(cfg: ComponentConfig<S, JoinProps> = {} as ComponentConfig<S, JoinProps>) {
     const {
       layout,
       orientation = 'horizontal',
       joinClassName,
       deepTarget,
       ...rest
-    } = cfg as ComponentConfig<Schema, JoinProps>;
+    } = cfg as ComponentConfig<S, JoinProps>;
 
     if (layout) {
       throw new Error('Join does not accept a custom layout; it always uses the join layout.');
@@ -35,7 +34,7 @@ export class Join<
     } as LayoutConfig;
 
     super({
-      ...(rest as ComponentConfig<Schema, Props>),
+      ...(rest as ComponentConfig<S, JoinProps>),
       orientation,
       joinClassName,
       deepTarget,
@@ -45,7 +44,7 @@ export class Join<
 }
 
 export function join(
-  cfg: ComponentConfig<ContainerSchema, JoinProps> = {}
+  cfg: ComponentConfig<ContainerState, JoinProps> = {}
 ): Join {
   return new Join(cfg);
 }

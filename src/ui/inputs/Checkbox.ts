@@ -48,7 +48,7 @@ const LABEL_MODE_TO_PLACEMENT: Record<LabelMode, LabelPlacement> = {
 export class Checkbox extends BaseInput<boolean, CheckboxState> {
   protected override defaultHostClasses(): string[] { return []; }
 
-  protected override extraStateInit(): CheckboxState {
+  protected override extraInitialState(): CheckboxState {
     return {
       color: 'default',
       shape: 'square',

@@ -1,12 +1,16 @@
 // src/ui/Progress.ts
 import { html } from 'uhtml';
-import { Component, type ComponentConfig } from './Component';
+import {
+  Component,
+  type BuiltInComponentState,
+  type ComponentConfig
+} from './Component';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Orientation = 'horizontal' | 'vertical';
 type LabelMode = 'none' | 'inside' | 'end' | 'floating';
 
-export interface ProgressState {
+export interface ProgressState extends BuiltInComponentState {
   value: number | null;
   min: number;
   max: number;
@@ -27,22 +31,25 @@ export interface ProgressProps {
   className?: string;
 }
 
-export class Progress extends Component<ProgressState, ProgressProps> {
-  protected stateInit = {
-    value: 50,
-    min: 0,
-    max: 100,
-    orientation: 'horizontal' as Orientation,
-    color: 'primary' as FlyonColor,
-    striped: false,
-    animated: false,
-    indeterminate: false,
-    labelMode: 'none' as LabelMode,
-    labelText: null,
-    widthClass: 'w-56',
-    heightClass: 'h-56',
-    thicknessClass: null
-  } satisfies ProgressState;
+export class Progress extends Component<ProgressState> {
+  protected override initialState(): ProgressState {
+    return {
+      ...(super.initialState() as BuiltInComponentState),
+      value: 50,
+      min: 0,
+      max: 100,
+      orientation: 'horizontal',
+      color: 'primary',
+      striped: false,
+      animated: false,
+      indeterminate: false,
+      labelMode: 'none',
+      labelText: null,
+      widthClass: 'w-56',
+      heightClass: 'h-56',
+      thicknessClass: null
+    } satisfies ProgressState;
+  }
 
   private pct(): number | null {
     const s = this.state();
@@ -82,7 +89,7 @@ export class Progress extends Component<ProgressState, ProgressProps> {
           : `height:${pct}%`;
 
     const ariaNow = pct == null ? undefined : String(Math.round(pct));
-    const ariaLabel = this.props.ariaLabel ?? (pct == null ? 'Loading' : `${Math.round(pct)}% Progressbar`);
+    const ariaLabel = (this.props as ProgressProps).ariaLabel ?? (pct == null ? 'Loading' : `${Math.round(pct)}% Progressbar`);
 
     const labelText = s.labelText ?? (pct == null ? '' : `${Math.round(pct)}%`);
 

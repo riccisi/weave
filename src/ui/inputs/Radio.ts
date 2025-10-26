@@ -51,7 +51,7 @@ const LABEL_MODE_TO_PLACEMENT: Record<LabelMode, LabelPlacement> = {
 export class Radio extends BaseInput<boolean, RadioState> {
   protected override defaultHostClasses(): string[] { return []; }
 
-  protected override extraStateInit(): RadioState {
+  protected override extraInitialState(): RadioState {
     return {
       color: 'default',
       variant: 'default',

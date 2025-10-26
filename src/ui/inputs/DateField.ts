@@ -7,7 +7,7 @@ export interface DateFieldState {
 }
 
 export class DateField extends BaseInput<string, DateFieldState> {
-  protected override extraStateInit(): DateFieldState {
+  protected override extraInitialState(): DateFieldState {
     return {
       min: null,
       max: null

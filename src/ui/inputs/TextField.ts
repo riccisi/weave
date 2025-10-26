@@ -10,7 +10,7 @@ export interface TextFieldState {
 }
 
 export class TextField extends BaseInput<string, TextFieldState> {
-  protected override extraStateInit(): TextFieldState {
+  protected override extraInitialState(): TextFieldState {
     return {
       minLength: null,
       maxLength: null,

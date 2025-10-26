@@ -1,6 +1,10 @@
 // src/ui/Button.ts
 import { html } from 'uhtml';
-import { Component, type ComponentConfig } from './Component';
+import { ComponentConfig } from './Component';
+import {
+  InteractiveComponent,
+  type InteractiveState
+} from './InteractiveComponent';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Variant = 'solid' | 'soft' | 'outline' | 'text' | 'gradient';
@@ -9,7 +13,7 @@ type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 type Shape = 'rounded' | 'pill' | 'circle' | 'square';
 
-export interface ButtonState {
+export interface ButtonState extends InteractiveState {
   text: string;
   variant: Variant;
   color: FlyonColor;
@@ -23,6 +27,8 @@ export interface ButtonState {
   iconLeft: string | null;
   iconRight: string | null;
   customColor: string | null;
+  /** backward compat shortcut for color; 'neutral' -> 'default' */
+  kind?: 'primary' | 'secondary' | 'neutral';
 }
 
 export interface ButtonProps {
@@ -36,36 +42,45 @@ export interface ButtonProps {
   kind?: 'primary' | 'secondary' | 'neutral';
 }
 
-export class Button extends Component<ButtonState, ButtonProps> {
+export class Button extends InteractiveComponent<ButtonState> {
+  static wtype = 'button';
+
   private _appliedClasses: Set<string> = new Set();
   private _onClickBound?: (ev: MouseEvent) => void;
 
-  protected stateInit = {
-    text: 'Button',
-    variant: 'solid' as Variant,
-    color: 'default' as FlyonColor,
-    size: 'md' as Size,
-    wide: false,
-    block: false,
-    glass: false,
-    active: false,
-    loading: false,
-    shape: 'rounded' as Shape,
-    iconLeft: null as string | null,
-    iconRight: null as string | null,
-    customColor: null as string | null
-  } satisfies ButtonState;
+  protected override initialState(): ButtonState {
+    return {
+      ...(super.initialState() as InteractiveState),
+      text: 'Button',
+      variant: 'solid',
+      color: 'default',
+      size: 'md',
+      wide: false,
+      block: false,
+      glass: false,
+      active: false,
+      loading: false,
+      shape: 'rounded',
+      iconLeft: null,
+      iconRight: null,
+      customColor: null
+    } satisfies ButtonState;
+  }
 
   protected override hostTag(): string {
     return 'button';
   }
 
   protected override beforeMount(): void {
+    super.beforeMount();
+
     const s = this.state();
-    const kind = this.props.kind;
+    const kind = this.props.kind ?? s.kind;
     if (kind) {
       s.color = kind === 'neutral' ? 'default' : (kind as FlyonColor);
     }
+
+    this.applyDisabled();
   }
 
   protected override applyDisabled(): void {
@@ -73,15 +88,12 @@ export class Button extends Component<ButtonState, ButtonProps> {
 
     const s = this.state();
     const host = this.el();
-    const effectiveDisabled = !!(s.disabled || s.loading);
+    if (!host) return;
 
-    if (effectiveDisabled) {
-      host.classList.add('btn-disabled');
-    } else {
-      host.classList.remove('btn-disabled');
-    }
+    const effective = this._lastEffectiveDisabled || s.loading;
 
-    host.toggleAttribute('disabled', effectiveDisabled);
+    host.classList.toggle('btn-disabled', effective);
+    host.toggleAttribute('disabled', effective);
 
     if (s.loading) {
       host.setAttribute('aria-busy', 'true');
@@ -93,7 +105,7 @@ export class Button extends Component<ButtonState, ButtonProps> {
   protected override view() {
     const s = this.state();
     const host = this.el();
-    const p = this.props;
+    const p = this.props as ButtonProps;
 
     const classes = new Set<string>(['btn']);
 
