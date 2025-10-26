@@ -1,5 +1,8 @@
 import { html } from 'uhtml';
-import { Component, type StateInit } from '../Component';
+import {
+  InteractiveComponent,
+  type InteractiveState
+} from '../InteractiveComponent';
 
 export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type LabelMode = 'none' | 'inline' | 'floating';
@@ -9,7 +12,7 @@ export interface ValidationResult {
   message?: string;
 }
 
-export interface BaseInputState<T> {
+export interface BaseInputState<T> extends InteractiveState {
   value: T | null;
   readonly: boolean;
   required: boolean;
@@ -29,48 +32,43 @@ export interface BaseInputProps {
   autocomplete?: string;
   inputMode?: string;
   inputAttributes?: Record<string, any>;
-  onInput?: (cmp: BaseInput<any, any, any>, ev: Event) => void;
-  onChange?: (cmp: BaseInput<any, any, any>, ev: Event) => void;
-  onEnter?: (cmp: BaseInput<any, any, any>, ev: KeyboardEvent) => void;
+  onInput?: (cmp: BaseInput<any, any>, ev: Event) => void;
+  onChange?: (cmp: BaseInput<any, any>, ev: Event) => void;
+  onEnter?: (cmp: BaseInput<any, any>, ev: KeyboardEvent) => void;
   className?: string;
 }
 
 export abstract class BaseInput<
   T,
-  ExtraState extends object = Record<string, never>,
-  Props extends BaseInputProps = BaseInputProps
-> extends Component<BaseInputState<T> & ExtraState, Props> {
+  ExtraState extends object = Record<string, never>
+> extends InteractiveComponent<BaseInputState<T> & ExtraState> {
   protected _pendingInputAttrs: Record<string, any> = {};
   protected _appliedInputAttrKeys = new Set<string>();
   private _validationUnsub: (() => void) | null = null;
 
   protected applyIdToHost = false;
 
-  protected stateInit: StateInit = {
-    value: null,
-    readonly: false,
-    required: false,
-    size: 'md',
-    placeholder: null,
-    label: null,
-    labelMode: 'none',
-    helperText: null,
-    touched: false,
-    valid: null,
-    invalidMessage: null,
-    validationEnabled: true
-  };
-
-  protected extraStateInit(): ExtraState {
-    return {} as ExtraState;
+  protected override initialState(): BaseInputState<T> & ExtraState {
+    return {
+      ...(super.initialState() as InteractiveState),
+      value: null,
+      readonly: false,
+      required: false,
+      size: 'md',
+      placeholder: null,
+      label: null,
+      labelMode: 'none',
+      helperText: null,
+      touched: false,
+      valid: null,
+      invalidMessage: null,
+      validationEnabled: true,
+      ...(this.extraInitialState() as ExtraState)
+    } as BaseInputState<T> & ExtraState;
   }
 
-  protected override schema(): StateInit {
-    return {
-      ...super.schema(),
-      ...this.stateInit,
-      ...this.extraStateInit()
-    };
+  protected extraInitialState(): ExtraState {
+    return {} as ExtraState;
   }
 
   protected hostTag(): string { return 'div'; }
@@ -172,14 +170,14 @@ export abstract class BaseInput<
       const raw = (ev.target as HTMLInputElement).value ?? '';
       const next = this.fromDom(raw);
       this.commitValue(next);
-      this.props.onInput?.(this, ev);
+      (this.props as BaseInputProps).onInput?.(this, ev);
     };
     const onChange = (ev: Event) => {
-      this.props.onChange?.(this, ev);
+      (this.props as BaseInputProps).onChange?.(this, ev);
     };
     const onKeyDown = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter') {
-        this.props.onEnter?.(this, ev);
+        (this.props as BaseInputProps).onEnter?.(this, ev);
       }
     };
 
@@ -246,11 +244,10 @@ export abstract class BaseInput<
   protected override applyDisabled(): void {
     super.applyDisabled();
 
-    const s = this.state();
     const input = this.el().querySelector('input');
     if (!(input instanceof HTMLInputElement)) return;
 
-    const disabled = !!s.disabled;
+    const disabled = this._lastEffectiveDisabled;
     input.toggleAttribute('disabled', disabled);
     input.disabled = disabled;
   }
@@ -298,4 +295,3 @@ export abstract class BaseInput<
     }
   }
 }
-

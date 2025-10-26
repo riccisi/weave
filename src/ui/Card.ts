@@ -1,13 +1,17 @@
 import { html } from 'uhtml';
 import type { Component as BaseComponent, ComponentConfig } from './Component';
-import { Container, type ContainerProps, type ContainerSchema } from './Container';
+import {
+  Container,
+  type ContainerProps,
+  type ContainerState
+} from './Container';
 import type { Layout, LayoutConfig } from './layouts/Layout';
 import { LayoutRegistry } from './layouts/LayoutRegistry';
 
 export type CardImagePlacement = 'top' | 'side';
 export type CardActionsAlign = 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
 
-export interface CardState {
+export interface CardState extends ContainerState {
   title: string | null;
   description: string | null;
   imageSrc: string | null;
@@ -22,7 +26,7 @@ export interface CardState {
 }
 
 export interface CardProps extends ContainerProps {
-  actions?: Array<BaseComponent<any, any>>;
+  actions?: Array<BaseComponent<any>>;
   actionsLayout?: LayoutConfig | Layout;
   bodyClassName?: string;
   figureClassName?: string;
@@ -31,59 +35,68 @@ export interface CardProps extends ContainerProps {
   className?: string;
 }
 
-export class Card extends Container<CardState, CardProps> {
-  protected stateInit = {
-    title: 'Card title',
-    description: null,
-    imageSrc: null,
-    imageAlt: 'Card image',
-    imagePlacement: 'top' as CardImagePlacement,
-    compact: false,
-    glass: false,
-    bordered: false,
-    imageFull: false,
-    actionsAlign: 'end' as CardActionsAlign,
-    actionsWrap: false
-  } satisfies CardState;
-
+export class Card extends Container<CardState> {
   private _bodyLayout?: Layout;
   private _bodyLayoutScheduled = false;
   private _bodyEl?: HTMLDivElement | null;
 
   private _actionsContainer?: Container;
   private _actionsManagedClasses: Set<string> = new Set();
-  private _actionsDisabledSnapshot?: boolean;
   private _actionsDisabledUnsub?: () => void;
 
+  protected override initialState(): CardState {
+    return {
+      ...(super.initialState() as ContainerState),
+      title: 'Card title',
+      description: null,
+      imageSrc: null,
+      imageAlt: 'Card image',
+      imagePlacement: 'top',
+      compact: false,
+      glass: false,
+      bordered: false,
+      imageFull: false,
+      actionsAlign: 'end',
+      actionsWrap: false
+    } satisfies CardState;
+  }
+
   protected override beforeMount(): void {
-    const layoutProp = this.props.layout as Layout | LayoutConfig | undefined;
+    const props = this.props as CardProps;
+    const layoutProp = props.layout as Layout | LayoutConfig | undefined;
     if (layoutProp) {
       this._bodyLayout = LayoutRegistry.create(layoutProp);
-      (this.props as CardProps).layout = undefined;
+      props.layout = undefined;
     }
 
     super.beforeMount();
 
     if (layoutProp !== undefined) {
-      (this.props as CardProps).layout = layoutProp;
+      props.layout = layoutProp;
     }
 
-    const actions = this.props.actions ?? [];
+    const actions = props.actions ?? [];
     if (actions.length) {
-      const opts: ComponentConfig<ContainerSchema, ContainerProps> = {
+      const opts: ComponentConfig<ContainerState, ContainerProps> = {
         items: actions,
-        layout: this.props.actionsLayout
+        layout: props.actionsLayout
       };
       this._actionsContainer = new Container(opts);
       const staging = document.createElement('div');
       this._actionsContainer.mount(staging, this.state());
+      this.syncActionsDisabled();
     }
 
     this._actionsDisabledUnsub = this.state().on(
       'disabled',
-      (disabled: boolean) => this.syncActionsDisabled(disabled),
+      () => this.syncActionsDisabled(),
       { immediate: true }
     );
+  }
+
+  public override setDisabledFromParent(flag: boolean): void {
+    super.setDisabledFromParent(flag);
+    this.syncActionsDisabled();
   }
 
   protected override view() {
@@ -122,8 +135,9 @@ export class Card extends Container<CardState, CardProps> {
 
   private renderBody() {
     const s = this.state();
+    const props = this.props as CardProps;
     const bodyClasses = this.classesToString(
-      this.hostClasses('card-body', this.props.bodyClassName)
+      this.hostClasses('card-body', props.bodyClassName)
     );
 
     const title = s.title ? html`<h2 class="card-title">${s.title}</h2>` : null;
@@ -136,14 +150,15 @@ export class Card extends Container<CardState, CardProps> {
 
   private renderImage() {
     const s = this.state();
+    const props = this.props as CardProps;
     const src = s.imageSrc?.trim();
     if (!src) return null;
     const alt = s.imageAlt ?? '';
     const figureClasses = this.classesToString(
-      this.hostClasses('card-image', this.props.figureClassName)
+      this.hostClasses('card-image', props.figureClassName)
     );
     const imgClasses = this.classesToString(
-      this.hostClasses('rounded-xl', this.props.imageClassName)
+      this.hostClasses('rounded-xl', props.imageClassName)
     );
     return html`<figure class=${figureClasses}><img src=${src} alt=${alt} class=${imgClasses} /></figure>`;
   }
@@ -178,6 +193,7 @@ export class Card extends Container<CardState, CardProps> {
     const host = this._actionsContainer?.el();
     if (!host) return;
     const s = this.state();
+    const props = this.props as CardProps;
     const alignClass = this.actionsAlignmentClass(s.actionsAlign);
     const wrapClass = s.actionsWrap ? 'flex-wrap' : null;
     const classes = this.hostClasses(
@@ -186,7 +202,7 @@ export class Card extends Container<CardState, CardProps> {
       'gap-2',
       alignClass,
       wrapClass,
-      this.props.actionsClassName
+      props.actionsClassName
     );
 
     for (const cls of this._actionsManagedClasses) {
@@ -217,20 +233,10 @@ export class Card extends Container<CardState, CardProps> {
     }
   }
 
-  private syncActionsDisabled(containerDisabled: boolean): void {
-    const container = this._actionsContainer;
-    if (!container) return;
-    const state = container.state() as { disabled: boolean };
-    if (containerDisabled) {
-      if (this._actionsDisabledSnapshot === undefined) {
-        this._actionsDisabledSnapshot = state.disabled;
-      }
-      if (!state.disabled) state.disabled = true;
-    } else if (this._actionsDisabledSnapshot !== undefined) {
-      const previous = this._actionsDisabledSnapshot;
-      this._actionsDisabledSnapshot = undefined;
-      if (state.disabled !== previous) state.disabled = previous;
-    }
+  private syncActionsDisabled(): void {
+    if (!this._actionsContainer) return;
+    const effective = this._lastEffectiveDisabled || this.state().disabled === true;
+    this._actionsContainer.setDisabledFromParent(!!effective);
   }
 
   private classesToString(classes: Iterable<string>): string {
@@ -252,7 +258,6 @@ export class Card extends Container<CardState, CardProps> {
 
     this._actionsDisabledUnsub?.();
     this._actionsDisabledUnsub = undefined;
-    this._actionsDisabledSnapshot = undefined;
     if (this._actionsContainer) {
       this._actionsContainer.unmount();
       this._actionsContainer = undefined;

@@ -1,12 +1,16 @@
 // src/ui/Alert.ts
 import { html } from 'uhtml';
-import { Component, type ComponentConfig } from './Component';
+import {
+  Component,
+  type BuiltInComponentState,
+  type ComponentConfig
+} from './Component';
 import { Button } from './Button';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 export type Variant = 'solid' | 'soft' | 'outline';
 
-export interface AlertState {
+export interface AlertState extends BuiltInComponentState {
   variant: Variant;
   color: FlyonColor;
   title: string | null;
@@ -24,23 +28,28 @@ export interface AlertProps {
   className?: string;
 }
 
-export class Alert extends Component<AlertState, AlertProps> {
+export class Alert extends Component<AlertState> {
   private _buttons: Button[] = [];
 
-  protected stateInit = {
-    variant: 'solid' as Variant,
-    color: 'default' as FlyonColor,
-    title: null,
-    message: 'A quick alert conveying key information or prompting action within a system.',
-    list: null,
-    icon: null,
-    dismissible: false,
-    closeLabel: 'Close',
-    responsive: false
-  } satisfies AlertState;
+  protected override initialState(): AlertState {
+    return {
+      ...(super.initialState() as BuiltInComponentState),
+      variant: 'solid',
+      color: 'default',
+      title: null,
+      message: 'A quick alert conveying key information or prompting action within a system.',
+      list: null,
+      icon: null,
+      dismissible: false,
+      closeLabel: 'Close',
+      responsive: false
+    } satisfies AlertState;
+  }
 
   protected override beforeMount(): void {
-    const actions = this.props.actions ?? [];
+    super.beforeMount();
+
+    const actions = (this.props as AlertProps).actions ?? [];
     this._buttons = Array.from(actions);
 
     for (const btn of this._buttons) {
@@ -52,6 +61,7 @@ export class Alert extends Component<AlertState, AlertProps> {
   protected override beforeUnmount(): void {
     for (const b of this._buttons) b.unmount();
     this._buttons = [];
+    super.beforeUnmount();
   }
 
   protected override view() {
@@ -108,7 +118,7 @@ export class Alert extends Component<AlertState, AlertProps> {
         class="ms-auto cursor-pointer leading-none"
         aria-label=${s.closeLabel}
         onclick=${(ev: MouseEvent) => {
-          this.props.onDismiss?.(this, ev);
+          (this.props as AlertProps).onDismiss?.(this, ev);
           this.requestRemove();
         }}
       >

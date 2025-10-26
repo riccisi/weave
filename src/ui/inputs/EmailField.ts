@@ -3,9 +3,9 @@ import type { ComponentConfig } from '../Component';
 import type { BaseInputProps, BaseInputState } from './BaseInput';
 
 export class EmailField extends TextField {
-  protected override extraStateInit(): TextFieldState {
+  protected override extraInitialState(): TextFieldState {
     return {
-      ...super.extraStateInit(),
+      ...super.extraInitialState(),
       spellcheck: false
     } satisfies TextFieldState;
   }

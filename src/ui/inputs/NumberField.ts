@@ -9,7 +9,7 @@ export interface NumberFieldState {
 }
 
 export class NumberField extends BaseInput<number, NumberFieldState> {
-  protected override extraStateInit(): NumberFieldState {
+  protected override extraInitialState(): NumberFieldState {
     return {
       min: null,
       max: null,
