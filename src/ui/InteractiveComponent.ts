@@ -1,5 +1,4 @@
-import { Component, type ComponentState } from './Component';
-import type { ComponentProps } from './types';
+import { Component, type ComponentState, type ComponentProps } from './Component';
 
 /**
  * Reactive state shared by interactive components.

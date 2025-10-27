@@ -1,7 +1,6 @@
 // src/ui/Progress.ts
 import { html } from 'uhtml';
-import { Component, type ComponentState, type ComponentConfig } from './Component';
-import type { ComponentProps } from './types';
+import { Component, type ComponentState, type ComponentProps, type ComponentConfig } from './Component';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Orientation = 'horizontal' | 'vertical';
@@ -56,6 +55,10 @@ export class Progress extends Component<ProgressState, ProgressProps> {
       thicknessClass: null
     } satisfies ProgressState;
   }
+
+    protected idPrefix(): string {
+        return 'progress';
+    }
 
   private pct(): number | null {
     const s = this.state();

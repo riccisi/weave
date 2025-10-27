@@ -47,6 +47,10 @@ export class Join<
       layout: layoutConfig
     });
   }
+
+    protected idPrefix(): string {
+        return 'join';
+    }
 }
 
 export function join(

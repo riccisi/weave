@@ -1,6 +1,5 @@
 import type { State } from '../../state/State';
-import type { Component, ComponentState } from '../Component';
-import type { ComponentProps } from '../types';
+import type { Component, ComponentState, ComponentProps } from '../Component';
 
 /**
  * Context passed to layout strategies describing the container host and children.

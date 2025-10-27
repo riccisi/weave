@@ -1,7 +1,6 @@
 // src/ui/Alert.ts
 import { html } from 'uhtml';
-import { Component, type ComponentState, type ComponentConfig } from './Component';
-import type { ComponentProps } from './types';
+import { Component, type ComponentState, type ComponentProps, type ComponentConfig } from './Component';
 import { Button } from './Button';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
@@ -61,6 +60,10 @@ export class Alert extends Component<AlertState, AlertProps> {
       responsive: false
     } satisfies AlertState;
   }
+
+    protected idPrefix(): string {
+        return 'alert';
+    }
 
   protected override beforeMount(): void {
     super.beforeMount();

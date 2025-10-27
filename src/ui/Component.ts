@@ -1,7 +1,6 @@
 import { render } from 'uhtml';
 import { State } from '../state/State';
 import { ReactiveRuntime } from '../state/ReactiveRuntime';
-import type { ComponentProps } from './types';
 
 /**
  * Reactive state shared by all Weave components.
@@ -19,6 +18,28 @@ export interface ComponentState {
    * When true, the component is hidden and becomes non-interactive for assistive technologies.
    */
   hiddenInert: boolean;
+}
+
+/**
+ * Base props shared by all Weave components.
+ * These values are non-reactive configuration inputs provided at construction time.
+ */
+export interface ComponentProps {
+    /**
+     * Optional DOM id assigned to the component's host element when it mounts.
+     */
+    id?: string;
+
+    /**
+     * Extra CSS class names appended to the host element in addition to component-managed classes.
+     */
+    className?: string;
+
+    /**
+     * User defined state properties of initial state overrides. When present, matching keys are merged into the
+     * component's reactive state during construction.
+     */
+    state?: Record<string, any>;
 }
 
 /**
@@ -82,7 +103,7 @@ export abstract class Component<
   protected _unsubs: Array<() => void> = [];
   protected _renderQueued = false;
 
-  private readonly _incomingProps: ComponentConfig<S, P>;
+  private readonly _incomingConfig: ComponentConfig<S, P>;
 
   /** Component-wide unique id (overridable via config.id). */
   private readonly _id: string;
@@ -97,7 +118,7 @@ export abstract class Component<
   protected _propClassNames: string[] = [];
 
   constructor(config: ComponentConfig<S, P> = {} as ComponentConfig<S, P>) {
-    this._incomingProps = config;
+    this._incomingConfig = config;
     this._id = this.resolveComponentId(config as Record<string, any>);
   }
 
@@ -246,7 +267,7 @@ export abstract class Component<
     }
 
     const baseState = this.initialState();
-    const { stateOverrides, props, legacyState } = this.splitOptions(this._incomingProps, baseState);
+    const { stateOverrides, props, userState } = this.splitOptions(this._incomingConfig, baseState);
     this.props = props;
     this._propClassNames = Component.normalizeClassProp(this.props.className);
 
@@ -254,7 +275,7 @@ export abstract class Component<
     const parentState = this._parentState;
     const initial = {
       ...baseState,
-      ...legacyState,
+      ...userState,
       ...stateOverrides
     };
     this._state = new State(initial, parentState, runtime) as State & S;
@@ -406,7 +427,7 @@ export abstract class Component<
   }
 
   /**
-   * Split the caller-provided configuration into reactive state overrides, legacy state bag
+   * Split the caller-provided configuration into reactive state overrides, custom user state property bag
    * and plain props. Only keys present in {@link baseState} are considered valid state overrides.
    */
   protected splitOptions(
@@ -414,20 +435,20 @@ export abstract class Component<
     baseState: S
   ): {
     stateOverrides: Partial<S>;
-    legacyState: Partial<S>;
+    userState: Partial<S>;
     props: P;
   } {
     const stateKeys = new Set(Object.keys(baseState ?? {}));
 
     const stateOverrides: Record<string, any> = {};
     const propsResult: Record<string, any> = {};
-    const legacyResult: Record<string, any> = {};
+    const userStateResult: Record<string, any> = {};
 
-    const legacyBag = (incoming as any)?.state;
-    if (legacyBag && typeof legacyBag === 'object') {
-      for (const [key, value] of Object.entries(legacyBag)) {
+    const userCustomState = (incoming as any)?.state;
+    if (userCustomState && typeof userCustomState === 'object') {
+      for (const [key, value] of Object.entries(userCustomState)) {
         if (stateKeys.has(key)) {
-          legacyResult[key] = value;
+          userStateResult[key] = value;
         }
       }
     }
@@ -440,7 +461,7 @@ export abstract class Component<
 
     return {
       stateOverrides: stateOverrides as Partial<S>,
-      legacyState: legacyResult as Partial<S>,
+      userState: userStateResult as Partial<S>,
       props: propsResult as P
     };
   }

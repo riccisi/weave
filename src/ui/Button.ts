@@ -1,11 +1,10 @@
 // src/ui/Button.ts
 import { html } from 'uhtml';
-import { ComponentConfig } from './Component';
+import { type ComponentProps, type ComponentConfig } from './Component';
 import {
   InteractiveComponent,
   type InteractiveComponentState
 } from './InteractiveComponent';
-import type { ComponentProps } from './types';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Variant = 'solid' | 'soft' | 'outline' | 'text' | 'gradient';
@@ -93,6 +92,10 @@ export class Button extends InteractiveComponent<ButtonState, ButtonProps> {
   protected override hostTag(): string {
     return 'button';
   }
+
+    protected idPrefix(): string {
+        return 'cmp';
+    }
 
   protected override beforeMount(): void {
     super.beforeMount();

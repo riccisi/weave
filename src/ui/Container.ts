@@ -1,7 +1,6 @@
 import { html } from 'uhtml';
-import { Component, type ComponentConfig } from './Component';
+import { Component, type ComponentProps, type ComponentConfig } from './Component';
 import { InteractiveComponent, type InteractiveComponentState } from './InteractiveComponent';
-import type { ComponentProps } from './types';
 import type { Layout, LayoutConfig } from './layouts/Layout';
 import { LayoutRegistry } from './layouts/LayoutRegistry';
 

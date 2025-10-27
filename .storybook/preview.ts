@@ -1,6 +1,5 @@
 import type { Preview } from '@storybook/html';
 import '../src/styles.css';
-import '../src/ui/auto-register';
 
 const preview: Preview = {
     parameters: {
