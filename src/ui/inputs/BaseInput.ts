@@ -3,7 +3,7 @@ import {
   InteractiveComponent,
   type InteractiveComponentState
 } from '../InteractiveComponent';
-import type { ComponentProps } from '../types';
+import type { ComponentProps } from '../Component';
 
 export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type LabelMode = 'none' | 'inline' | 'floating';

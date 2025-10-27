@@ -3,7 +3,7 @@ import { card, type CardActionsAlign, type CardImagePlacement } from '../Card';
 import { button, Button } from '../Button';
 import { mountComponent } from '../testing/mount';
 import type { Component } from '../Component';
-import { joinLayout } from '../layouts/factories';
+import { joinLayout } from '../layouts/JoinLayout';
 
 function normalizeComponent(entry: any): Component | undefined {
   if (!entry) return undefined;
@@ -115,7 +115,7 @@ export const WithBodyLayout: Story = {
       title: 'Essential toolkit',
       description: 'Curated tools that help your team prototype faster and ship better products.',
       imageSrc: 'https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&w=800&q=80',
-      layout: joinLayout({ orientation: 'horizontal', className: 'rounded-btn' }),
+      layout: joinLayout({ orientation: 'horizontal', rounded: 'rounded-btn' }),
       items: [
         button({ text: 'Design kit', color: 'primary', size: 'sm' }),
         button({ text: 'Developer docs', variant: 'outline', size: 'sm' }),
