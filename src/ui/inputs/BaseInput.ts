@@ -1,8 +1,9 @@
 import { html } from 'uhtml';
 import {
   InteractiveComponent,
-  type InteractiveState
+  type InteractiveComponentState
 } from '../InteractiveComponent';
+import type { ComponentProps } from '../types';
 
 export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type LabelMode = 'none' | 'inline' | 'floating';
@@ -12,7 +13,7 @@ export interface ValidationResult {
   message?: string;
 }
 
-export interface BaseInputState<T> extends InteractiveState {
+export interface BaseInputState<T> extends InteractiveComponentState {
   value: T | null;
   readonly: boolean;
   required: boolean;
@@ -27,7 +28,10 @@ export interface BaseInputState<T> extends InteractiveState {
   validationEnabled: boolean;
 }
 
-export interface BaseInputProps {
+/**
+ * Non-reactive knobs shared across all input components.
+ */
+export interface BaseInputProps extends ComponentProps {
   name?: string;
   autocomplete?: string;
   inputMode?: string;
@@ -35,13 +39,12 @@ export interface BaseInputProps {
   onInput?: (cmp: BaseInput<any, any>, ev: Event) => void;
   onChange?: (cmp: BaseInput<any, any>, ev: Event) => void;
   onEnter?: (cmp: BaseInput<any, any>, ev: KeyboardEvent) => void;
-  className?: string;
 }
 
 export abstract class BaseInput<
   T,
   ExtraState extends object = Record<string, never>
-> extends InteractiveComponent<BaseInputState<T> & ExtraState> {
+> extends InteractiveComponent<BaseInputState<T> & ExtraState, BaseInputProps> {
   protected _pendingInputAttrs: Record<string, any> = {};
   protected _appliedInputAttrKeys = new Set<string>();
   private _validationUnsub: (() => void) | null = null;
@@ -50,7 +53,7 @@ export abstract class BaseInput<
 
   protected override initialState(): BaseInputState<T> & ExtraState {
     return {
-      ...(super.initialState() as InteractiveState),
+      ...(super.initialState() as InteractiveComponentState),
       value: null,
       readonly: false,
       required: false,
@@ -170,14 +173,14 @@ export abstract class BaseInput<
       const raw = (ev.target as HTMLInputElement).value ?? '';
       const next = this.fromDom(raw);
       this.commitValue(next);
-      (this.props as BaseInputProps).onInput?.(this, ev);
+      this.props.onInput?.(this, ev);
     };
     const onChange = (ev: Event) => {
-      (this.props as BaseInputProps).onChange?.(this, ev);
+      this.props.onChange?.(this, ev);
     };
     const onKeyDown = (ev: KeyboardEvent) => {
       if (ev.key === 'Enter') {
-        (this.props as BaseInputProps).onEnter?.(this, ev);
+        this.props.onEnter?.(this, ev);
       }
     };
 
