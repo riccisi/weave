@@ -5,8 +5,7 @@ import {
   type ContainerProps,
   type ContainerState
 } from './Container';
-import type { Layout, LayoutConfig } from './layouts/Layout';
-import { LayoutRegistry } from './layouts/LayoutRegistry';
+import type { Layout } from './layouts/Layout';
 
 export type CardImagePlacement = 'top' | 'side';
 export type CardActionsAlign = 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
@@ -33,7 +32,7 @@ export interface CardState extends ContainerState {
  */
 export interface CardProps extends ContainerProps {
   actions?: Array<BaseComponent<any, any>>;
-  actionsLayout?: LayoutConfig | Layout;
+  actionsLayout?: Layout;
   bodyClassName?: string;
   figureClassName?: string;
   imageClassName?: string;
@@ -71,9 +70,12 @@ export class Card extends Container<CardState, CardProps> {
 
   protected override beforeMount(): void {
     const props = this.props as CardProps;
-    const layoutProp = props.layout as Layout | LayoutConfig | undefined;
+    const layoutProp = props.layout as Layout | undefined;
     if (layoutProp) {
-      this._bodyLayout = LayoutRegistry.create(layoutProp);
+      if (typeof layoutProp.apply !== 'function') {
+        throw new Error('Card.layout must be a Layout instance (use flexLayout/gridLayout/joinLayout).');
+      }
+      this._bodyLayout = layoutProp;
       props.layout = undefined;
     }
 
@@ -85,9 +87,13 @@ export class Card extends Container<CardState, CardProps> {
 
     const actions = props.actions ?? [];
     if (actions.length) {
+      const actionsLayout = props.actionsLayout;
+      if (actionsLayout && typeof actionsLayout.apply !== 'function') {
+        throw new Error('Card.actionsLayout must be a Layout instance.');
+      }
       const opts: ComponentConfig<ContainerState, ContainerProps> = {
         items: actions,
-        layout: props.actionsLayout
+        layout: actionsLayout
       };
       this._actionsContainer = new Container(opts);
       const staging = document.createElement('div');
@@ -193,7 +199,7 @@ export class Card extends Container<CardState, CardProps> {
       host: body,
       children: this.items,
       state: this.state(),
-      props: this.props
+      containerProps: this.props as Record<string, any>
     });
   }
 
@@ -257,7 +263,7 @@ export class Card extends Container<CardState, CardProps> {
         host: this._bodyEl,
         children: this.items,
         state: this.state(),
-        props: this.props
+        containerProps: this.props as Record<string, any>
       });
     }
     this._bodyLayout = undefined;

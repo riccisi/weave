@@ -1,6 +1,6 @@
 import type { ComponentConfig } from './Component';
 import { Container, type ContainerProps, type ContainerState } from './Container';
-import type { LayoutConfig } from './layouts/Layout';
+import { joinLayout } from './layouts/JoinLayout';
 
 export type JoinOrientation = 'horizontal' | 'vertical';
 
@@ -9,8 +9,8 @@ export type JoinOrientation = 'horizontal' | 'vertical';
  */
 export interface JoinProps extends ContainerProps {
   orientation?: JoinOrientation;
-  joinClassName?: string;
-  deepTarget?: boolean;
+  rounded?: string;
+  shadow?: boolean;
 }
 
 /**
@@ -23,8 +23,8 @@ export class Join<
     const {
       layout,
       orientation = 'horizontal',
-      joinClassName,
-      deepTarget,
+      rounded,
+      shadow,
       ...rest
     } = cfg as ComponentConfig<S, JoinProps>;
 
@@ -32,25 +32,18 @@ export class Join<
       throw new Error('Join does not accept a custom layout; it always uses the join layout.');
     }
 
-    const layoutConfig: LayoutConfig = {
-      type: 'join',
-      orientation,
-      className: joinClassName,
-      deepTarget
-    } as LayoutConfig;
-
     super({
       ...(rest as ComponentConfig<S, JoinProps>),
       orientation,
-      joinClassName,
-      deepTarget,
-      layout: layoutConfig
+      rounded,
+      shadow,
+      layout: joinLayout({ orientation, rounded, shadow })
     });
   }
 
-    protected idPrefix(): string {
-        return 'join';
-    }
+  protected idPrefix(): string {
+    return 'join';
+  }
 }
 
 export function join(

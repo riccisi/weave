@@ -1,8 +1,6 @@
-import { html } from 'uhtml';
 import { Component, type ComponentProps, type ComponentConfig } from './Component';
 import { InteractiveComponent, type InteractiveComponentState } from './InteractiveComponent';
-import type { Layout, LayoutConfig } from './layouts/Layout';
-import { LayoutRegistry } from './layouts/LayoutRegistry';
+import type { Layout } from './layouts/Layout';
 
 /**
  * Base reactive state for containers. Subclasses extend this to add layout-related fields.
@@ -13,14 +11,18 @@ export interface ContainerState extends InteractiveComponentState {}
  * Non-reactive configuration for container-like components.
  */
 export interface ContainerProps extends ComponentProps {
-  /** Optional layout description (can be { type: 'join', ... } etc.) */
-  layout?: LayoutConfig | Layout;
+  /** Optional layout instance (flexLayout(...), gridLayout(...), joinLayout(...)). */
+  layout?: Layout;
   /** Children components already constructed via factories. */
   items?: Array<Component<any, any>>;
 }
 
 /**
- * Generic container capable of hosting child components and applying declarative layouts.
+ * Composite component capable of hosting child components and applying declarative layouts.
+ *
+ * Container mounts child components into off-DOM staging nodes before the first render so their hosts
+ * are ready when {@link view} returns. After every render the configured {@link Layout} instance is
+ * re-applied, enabling declarative flex/grid/join positioning without a global registry.
  */
 export class Container<
   S extends ContainerState = ContainerState,
@@ -33,7 +35,11 @@ export class Container<
   protected override beforeMount(): void {
     super.beforeMount();
 
-    this._layout = LayoutRegistry.create(this.props.layout);
+    const layout = this.props.layout;
+    if (layout && typeof (layout as Layout).apply !== 'function') {
+      throw new Error('Container.layout must be a Layout instance (use flexLayout/gridLayout/joinLayout).');
+    }
+    this._layout = layout as Layout | undefined;
 
     const incoming = Array.isArray(this.props.items)
       ? (this.props.items as Component<any, any>[])
@@ -63,7 +69,7 @@ export class Container<
       )
     );
 
-    this.applyLayoutNow();
+    this.applyLayout();
   }
 
   public override setDisabledFromParent(flag: boolean): void {
@@ -73,8 +79,8 @@ export class Container<
   }
 
   /** view(): render child hosts within our host */
-  protected override view() {
-    return html`${this.items.map((c) => c.el())}`;
+  protected override view(): any {
+    return this.items.map((c) => c.el());
   }
 
   /** After render, reapply the layout. */
@@ -113,12 +119,12 @@ export class Container<
     this._layoutScheduled = true;
     queueMicrotask(() => {
       this._layoutScheduled = false;
-      this.applyLayoutNow();
+      this.applyLayout();
     });
   }
 
   /** Apply/reapply the active layout to the host. */
-  private applyLayoutNow(): void {
+  protected applyLayout(): void {
     if (!this._layout) return;
     const host = this.el();
     if (!host) return;
@@ -126,7 +132,7 @@ export class Container<
       host,
       children: this.items,
       state: this.state(),
-      props: this.props
+      containerProps: this.props as Record<string, any>
     });
   }
 
@@ -145,7 +151,7 @@ export class Container<
         host: this.el(),
         children: this.items,
         state: this.state(),
-        props: this.props
+        containerProps: this.props as Record<string, any>
       });
     }
 

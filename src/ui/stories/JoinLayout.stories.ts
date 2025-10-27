@@ -1,9 +1,11 @@
+/**
+ * Storybook showcase for the FlyonUI join layout helper.
+ */
 import type { Meta, StoryObj } from '@storybook/html';
 import { mountComponent } from '../testing/mount';
 import { container } from '../Container';
 import { button } from '../Button';
-import { joinLayout } from '../layouts/factories';
-import '../layouts/JoinLayout';
+import { joinLayout } from '../layouts/JoinLayout';
 
 const meta = {
   title: 'Weave/Layouts/Join',
@@ -15,18 +17,24 @@ const meta = {
     ];
     const c = container({
       ...args,
-      layout: joinLayout({ orientation: args.orientation, className: args.className }),
+      layout: joinLayout({
+        orientation: args.orientation,
+        rounded: args.rounded,
+        shadow: args.shadow
+      }),
       items
     });
     return mountComponent(c);
   },
   argTypes: {
     orientation: { control: 'select', options: ['horizontal', 'vertical'] },
-    className: { control: 'text' }
+    rounded: { control: 'text' },
+    shadow: { control: 'boolean' }
   },
   args: {
     orientation: 'horizontal',
-    className: 'rounded-md'
+    rounded: 'rounded-md',
+    shadow: false
   }
 } satisfies Meta;
 
@@ -35,13 +43,13 @@ type Story = StoryObj<typeof meta>;
 
 export const AsLayout: Story = {};
 
-export const DeepTargetDemo: Story = {
+export const ShadowedStack: Story = {
   render: () => {
     const a = button({ text: 'A' });
     const b = button({ text: 'B', variant: 'outline' });
     const c = button({ text: 'C' });
     const joinContainer = container({
-      layout: joinLayout({ orientation: 'horizontal', deepTarget: true, className: 'rounded-lg' }),
+      layout: joinLayout({ orientation: 'vertical', rounded: 'rounded-lg', shadow: true }),
       items: [a, b, c]
     });
     return mountComponent(joinContainer);

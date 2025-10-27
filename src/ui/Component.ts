@@ -23,23 +23,40 @@ export interface ComponentState {
 /**
  * Base props shared by all Weave components.
  * These values are non-reactive configuration inputs provided at construction time.
+ *
+ * Layout overrides declared here let a child inform its parent layout about
+ * custom flex/grid placement without requiring bespoke prop typing on each component.
  */
 export interface ComponentProps {
-    /**
-     * Optional DOM id assigned to the component's host element when it mounts.
-     */
-    id?: string;
+  /** Optional DOM id assigned to the component's host element when it mounts. */
+  id?: string;
 
-    /**
-     * Extra CSS class names appended to the host element in addition to component-managed classes.
-     */
-    className?: string;
+  /** Extra CSS class names appended to the host element in addition to component-managed classes. */
+  className?: string;
 
-    /**
-     * User defined state properties of initial state overrides. When present, matching keys are merged into the
-     * component's reactive state during construction.
-     */
-    state?: Record<string, any>;
+  /**
+   * Additional state fields provided by the user, merged into the component's State
+   * at construction time. This allows injecting app-specific reactive fields
+   * that the component schema did not predeclare.
+   */
+  state?: Record<string, any>;
+
+  // ---- Layout override hints (per-child) ----
+
+  /** Flexbox override for this child: e.g. "1 1 auto", "0 0 auto". */
+  flex?: string;
+
+  /** Flexbox align-self override for this child. */
+  alignSelf?: 'start' | 'center' | 'end' | 'stretch';
+
+  /** Grid placement override for this child (CSS grid-column). */
+  gridColumn?: string;
+
+  /** Grid placement override for this child (CSS grid-row). */
+  gridRow?: string;
+
+  /** Grid placement override for this child (CSS place-self). */
+  placeSelf?: string;
 }
 
 /**
@@ -75,6 +92,20 @@ type ClassToken =
  * S — reactive state interface for the component.
  * P — non-reactive props interface for the component.
  */
+/**
+ * Base class for all Weave components.
+ *
+ * Responsibilities:
+ * - Owns a stable DOM host element (see {@link hostTag}).
+ * - Creates a reactive {@link State} composed of {@link initialState} plus user overrides.
+ * - Separates configuration into static {@link _props} and reactive {@link _state} buckets.
+ * - Provides lifecycle hooks ({@link beforeMount}, {@link afterMount}, {@link beforeUnmount}).
+ * - Performs rendering via uhtml and coalesces render requests via {@link requestRender}.
+ *
+ * Generics:
+ * S — reactive state interface for the component.
+ * P — non-reactive props interface for the component.
+ */
 export abstract class Component<
   S extends ComponentState = ComponentState,
   P extends ComponentProps = ComponentProps
@@ -85,24 +116,33 @@ export abstract class Component<
   /** Global incremental id sequence shared by all components. */
   private static _idSeq = 0;
 
+  /** Reactive data backing {@link state}. Mutating it triggers renders. */
   protected _state!: State & S;
+  /** DOM element hosting the component's template. */
   protected _host!: HTMLElement;
+  /** True once {@link mount} has completed. */
   protected _mounted = false;
+  /** Parent state inherited from the component tree, if any. */
   protected _parentState?: State;
 
-  protected _props: P = {} as P;
+  /**
+   * Non-reactive props captured from the construction config.
+   * Includes layout overrides (flex/grid hints) consumed by parent containers.
+   */
+  protected _props: (P & Record<string, any>) = {} as P & Record<string, any>;
 
   protected get props(): P {
-    return this._props;
+    return this._props as P;
   }
 
   protected set props(value: P) {
-    this._props = value;
+    this._props = value as P & Record<string, any>;
   }
 
   protected _unsubs: Array<() => void> = [];
   protected _renderQueued = false;
 
+  /** Raw config object provided by the caller before splitting into state/props. */
   private readonly _incomingConfig: ComponentConfig<S, P>;
 
   /** Component-wide unique id (overridable via config.id). */
@@ -416,7 +456,6 @@ export abstract class Component<
 
   /**
    * Split the caller-provided configuration into reactive state overrides and plain props.
-   * Legacy `state` bags are merged only for keys present in {@link baseState}.
    */
   protected onStateKeyChange(key: keyof S): void {
     if (key === 'hidden' || key === 'hiddenInert') {
@@ -427,15 +466,16 @@ export abstract class Component<
   }
 
   /**
-   * Split the caller-provided configuration into reactive state overrides, custom user state property bag
-   * and plain props. Only keys present in {@link baseState} are considered valid state overrides.
+   * Split the caller-provided configuration into reactive state overrides, a custom user state property bag
+   * and plain props. Keys present in {@link baseState} become typed overrides, while any other `state`
+   * entries are merged verbatim to extend the runtime {@link State}.
    */
   protected splitOptions(
     incoming: ComponentConfig<S, P>,
     baseState: S
   ): {
     stateOverrides: Partial<S>;
-    userState: Partial<S>;
+    userState: Record<string, any>;
     props: P;
   } {
     const stateKeys = new Set(Object.keys(baseState ?? {}));
@@ -447,9 +487,7 @@ export abstract class Component<
     const userCustomState = (incoming as any)?.state;
     if (userCustomState && typeof userCustomState === 'object') {
       for (const [key, value] of Object.entries(userCustomState)) {
-        if (stateKeys.has(key)) {
-          userStateResult[key] = value;
-        }
+        userStateResult[key] = value;
       }
     }
 
@@ -461,7 +499,7 @@ export abstract class Component<
 
     return {
       stateOverrides: stateOverrides as Partial<S>,
-      userState: userStateResult as Partial<S>,
+      userState: userStateResult,
       props: propsResult as P
     };
   }
