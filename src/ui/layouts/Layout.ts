@@ -1,27 +1,40 @@
-// API di base per i layout
+import type { State } from '../../state/State';
+import type { Component, ComponentState } from '../Component';
+import type { ComponentProps } from '../types';
 
-import type { Component } from "../Component";
-import type { State } from "../../state/State";
-
-export interface LayoutContext {
-    /** Nodo host del container */
-    host: HTMLElement;
-    /** Figli (istanze component) già montati */
-    children: Component[];
-    /** Stato ereditato dal container */
-    state: State;
-    /** Props (config flat) del container */
-    props: Record<string, any>;
+/**
+ * Context passed to layout strategies describing the container host and children.
+ */
+export interface LayoutContext<
+  S extends ComponentState = ComponentState,
+  P extends ComponentProps = ComponentProps
+> {
+  /** Container host element. */
+  host: HTMLElement;
+  /** Already-mounted child components rendered inside the container. */
+  children: Array<Component<any, any>>;
+  /** Reactive state owned by the container. */
+  state: State & S;
+  /** Non-reactive props supplied to the container. */
+  props: P;
 }
 
-export interface Layout {
-    /** Applicazione/aggiornamento del layout (idempotente) */
-    apply(ctx: LayoutContext): void;
-    /** Cleanup opzionale quando il container si smonta o cambia layout */
-    dispose?(ctx: LayoutContext): void;
+/**
+ * Strategy interface implemented by concrete layouts (grid, join, etc.).
+ */
+export interface Layout<
+  S extends ComponentState = ComponentState,
+  P extends ComponentProps = ComponentProps
+> {
+  /** Apply or update the layout on the host. */
+  apply(ctx: LayoutContext<S, P>): void;
+  /** Optional cleanup hook when the layout is disposed. */
+  dispose?(ctx: LayoutContext<S, P>): void;
 }
 
-// Config dichiarativa lato utente, risolta via LayoutRegistry
+/**
+ * Declarative configuration resolved via {@link LayoutRegistry}.
+ */
 export type LayoutConfig = {
-    type: string;
+  type: string;
 } & Record<string, any>;

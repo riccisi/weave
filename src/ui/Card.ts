@@ -11,6 +11,9 @@ import { LayoutRegistry } from './layouts/LayoutRegistry';
 export type CardImagePlacement = 'top' | 'side';
 export type CardActionsAlign = 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
 
+/**
+ * Reactive state describing the card layout, media and action presentation.
+ */
 export interface CardState extends ContainerState {
   title: string | null;
   description: string | null;
@@ -25,17 +28,22 @@ export interface CardState extends ContainerState {
   actionsWrap: boolean;
 }
 
+/**
+ * Non-reactive card configuration including actions and custom class hooks.
+ */
 export interface CardProps extends ContainerProps {
-  actions?: Array<BaseComponent<any>>;
+  actions?: Array<BaseComponent<any, any>>;
   actionsLayout?: LayoutConfig | Layout;
   bodyClassName?: string;
   figureClassName?: string;
   imageClassName?: string;
   actionsClassName?: string;
-  className?: string;
 }
 
-export class Card extends Container<CardState> {
+/**
+ * Composite component combining media, text and child content inside a FlyonUI card shell.
+ */
+export class Card extends Container<CardState, CardProps> {
   private _bodyLayout?: Layout;
   private _bodyLayoutScheduled = false;
   private _bodyEl?: HTMLDivElement | null;

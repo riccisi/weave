@@ -3,8 +3,9 @@ import { html } from 'uhtml';
 import { ComponentConfig } from './Component';
 import {
   InteractiveComponent,
-  type InteractiveState
+  type InteractiveComponentState
 } from './InteractiveComponent';
+import type { ComponentProps } from './types';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Variant = 'solid' | 'soft' | 'outline' | 'text' | 'gradient';
@@ -13,36 +14,58 @@ type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 type Shape = 'rounded' | 'pill' | 'circle' | 'square';
 
-export interface ButtonState extends InteractiveState {
+/**
+ * Reactive state for {@link Button}. Changes trigger re-rendering and DOM updates.
+ */
+export interface ButtonState extends InteractiveComponentState {
+  /** Visible text label. */
   text: string;
+  /** Visual treatment preset. */
   variant: Variant;
+  /** Semantic color token. */
   color: FlyonColor;
+  /** Size token controlling padding and font size. */
   size: Size;
+  /** Whether the button should be visually wide. */
   wide: boolean;
+  /** Whether the button should take the full available width. */
   block: boolean;
+  /** Apply FlyonUI "glass" styling. */
   glass: boolean;
+  /** Whether the button is visually marked as active. */
   active: boolean;
+  /** Show an inline loading spinner. */
   loading: boolean;
+  /** Shape variant controlling border radius. */
   shape: Shape;
+  /** Optional icon class rendered before the text. */
   iconLeft: string | null;
+  /** Optional icon class rendered after the text. */
   iconRight: string | null;
+  /** Custom CSS color applied via `--btn-color`. */
   customColor: string | null;
-  /** backward compat shortcut for color; 'neutral' -> 'default' */
-  kind?: 'primary' | 'secondary' | 'neutral';
 }
 
-export interface ButtonProps {
+/**
+ * Non-reactive configuration for {@link Button}.
+ */
+export interface ButtonProps extends ComponentProps {
+  /** Click handler executed when the host button is activated. */
   onClick?: (btn: Button, ev: MouseEvent) => void;
+  /** Accessible label for icon-only buttons. */
   ariaLabel?: string;
+  /** Enable FlyonUI "waves" effect. */
   waves?: boolean;
+  /** Tone for the waves effect (e.g. "light", "primary"). */
   wavesTone?: string;
-  /** Additional CSS classes to merge in */
-  className?: string;
-  /** Legacy "kind" prop to map to color */
+  /** Legacy alias to configure {@link ButtonState.color}. */
   kind?: 'primary' | 'secondary' | 'neutral';
 }
 
-export class Button extends InteractiveComponent<ButtonState> {
+/**
+ * FlyonUI button implementation supporting variants, icons, loading state and waves effects.
+ */
+export class Button extends InteractiveComponent<ButtonState, ButtonProps> {
   static wtype = 'button';
 
   private _appliedClasses: Set<string> = new Set();
@@ -50,7 +73,7 @@ export class Button extends InteractiveComponent<ButtonState> {
 
   protected override initialState(): ButtonState {
     return {
-      ...(super.initialState() as InteractiveState),
+      ...(super.initialState() as InteractiveComponentState),
       text: 'Button',
       variant: 'solid',
       color: 'default',
@@ -75,7 +98,7 @@ export class Button extends InteractiveComponent<ButtonState> {
     super.beforeMount();
 
     const s = this.state();
-    const kind = this.props.kind ?? s.kind;
+    const kind = this.props.kind;
     if (kind) {
       s.color = kind === 'neutral' ? 'default' : (kind as FlyonColor);
     }
@@ -105,7 +128,7 @@ export class Button extends InteractiveComponent<ButtonState> {
   protected override view() {
     const s = this.state();
     const host = this.el();
-    const p = this.props as ButtonProps;
+    const p = this.props;
 
     const classes = new Set<string>(['btn']);
 

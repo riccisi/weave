@@ -1,23 +1,38 @@
 import { render } from 'uhtml';
 import { State } from '../state/State';
 import { ReactiveRuntime } from '../state/ReactiveRuntime';
+import type { ComponentProps } from './types';
 
-export interface BuiltInComponentState {
-  /** If true, the host is visually hidden (display:none) */
+/**
+ * Reactive state shared by all Weave components.
+ *
+ * Subclasses extend this interface to expose their own reactive fields. The base keys control
+ * visibility and interactivity guarantees that every component understands.
+ */
+export interface ComponentState {
+  /**
+   * When true, the component's host is visually/structurally hidden (typically display:none).
+   */
   hidden: boolean;
-  /** If true, hidden hosts are also taken out of the a11y tree via inert/aria-hidden */
+
+  /**
+   * When true, the component is hidden and becomes non-interactive for assistive technologies.
+   */
   hiddenInert: boolean;
 }
 
+/**
+ * A type-safe configuration object for building a component instance.
+ *
+ * The caller can supply partial reactive state {@link S} as well as non-reactive props {@link P}
+ * in a single object, receiving useful IDE auto-completion for both categories.
+ */
 export type ComponentConfig<
-  S extends BuiltInComponentState = BuiltInComponentState,
-  Props extends Record<string, any> = Record<string, any>
-> = Partial<S> &
-  Partial<Props> & {
-    id?: string;
-    className?: string;
-    state?: Record<string, any>;
-  };
+  S extends ComponentState = ComponentState,
+  P extends ComponentProps = ComponentProps
+> = Partial<S> & Partial<Omit<P, 'state'>> & {
+  state?: Record<string, any>;
+};
 
 type ClassToken =
   | string
@@ -28,20 +43,23 @@ type ClassToken =
 
 /**
  * Base class for all Weave components.
- * - Owns a stable DOM host element (see `hostTag()`)
- * - Creates a reactive `State` composed of:
- *   - built-in component state (hidden/…)
- *   - subclass defaults via `initialState()`
- *   - user overrides (top-level config)
- *   - extra keys from `config.state`
- * - Provides lifecycle hooks (beforeMount / afterMount / beforeUnmount)
- * - Performs rendering via uhtml and re-renders when schema keys change
+ *
+ * Responsibilities:
+ * - Owns a stable DOM host element (see {@link hostTag}).
+ * - Creates a reactive {@link State} composed of {@link initialState} plus user overrides.
+ * - Provides lifecycle hooks ({@link beforeMount}, {@link afterMount}, {@link beforeUnmount}).
+ * - Performs rendering via uhtml and coalesces render requests via {@link requestRender}.
+ *
+ * Generics:
+ * S — reactive state interface for the component.
+ * P — non-reactive props interface for the component.
  */
 export abstract class Component<
-  S extends BuiltInComponentState = BuiltInComponentState
+  S extends ComponentState = ComponentState,
+  P extends ComponentProps = ComponentProps
 > {
   /** Reverse lookup: DOM host → component instance. */
-  private static _byHost = new WeakMap<HTMLElement, Component>();
+  private static _byHost = new WeakMap<HTMLElement, Component<any, any>>();
 
   /** Global incremental id sequence shared by all components. */
   private static _idSeq = 0;
@@ -51,12 +69,20 @@ export abstract class Component<
   protected _mounted = false;
   protected _parentState?: State;
 
-  protected props: Record<string, any> = {};
+  protected _props: P = {} as P;
+
+  protected get props(): P {
+    return this._props;
+  }
+
+  protected set props(value: P) {
+    this._props = value;
+  }
 
   protected _unsubs: Array<() => void> = [];
   protected _renderQueued = false;
 
-  private readonly _incomingProps: ComponentConfig<S, any>;
+  private readonly _incomingProps: ComponentConfig<S, P>;
 
   /** Component-wide unique id (overridable via config.id). */
   private readonly _id: string;
@@ -70,7 +96,7 @@ export abstract class Component<
   /** Normalized `className` tokens provided via props (never mutated). */
   protected _propClassNames: string[] = [];
 
-  constructor(config: ComponentConfig<S, any> = {} as ComponentConfig<S, any>) {
+  constructor(config: ComponentConfig<S, P> = {} as ComponentConfig<S, P>) {
     this._incomingProps = config;
     this._id = this.resolveComponentId(config as Record<string, any>);
   }
@@ -132,8 +158,8 @@ export abstract class Component<
   }
 
   /**
-   * Returns the initial reactive state for this component.
-   * Subclasses must call `super.initialState()` and merge their own defaults.
+   * Returns the base reactive state for this component. Subclasses should spread
+   * {@link super.initialState} and then apply their own default values.
    */
   protected initialState(): S {
     return {
@@ -198,13 +224,11 @@ export abstract class Component<
   }
 
   /**
-   * Mount the component into a container, optionally inheriting a parent State.
-   * - creates a reactive State from the initial state
-   * - creates a host element (using `hostTag()`)
-   * - attaches the host to the DOM
-   * - wires lifecycle + subscriptions
+   * Mount the component into a container, optionally inheriting a parent {@link State}.
+   * Creates the reactive state instance, the host element, lifecycle subscriptions and
+   * performs the initial render.
    */
-  public mount(target: Element | string, parent?: Component | State<any>): this {
+  public mount(target: Element | string, parent?: Component<any, any> | State<any>): this {
     if (this._mounted) return this;
 
     const container =
@@ -221,50 +245,43 @@ export abstract class Component<
       this._parentState = undefined;
     }
 
-    const base = this.initialState();
-    const { stateOverrides, props } = this.splitOptions(this._incomingProps, base);
+    const baseState = this.initialState();
+    const { stateOverrides, props, legacyState } = this.splitOptions(this._incomingProps, baseState);
     this.props = props;
     this._propClassNames = Component.normalizeClassProp(this.props.className);
 
     const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime;
-    const extraState =
-      this._incomingProps && typeof this._incomingProps.state === 'object'
-        ? this._incomingProps.state ?? {}
-        : {};
-
     const parentState = this._parentState;
-
-    this._state = new State(
-      {
-        ...base,
-        ...(extraState ?? {}),
-        ...(stateOverrides as Record<string, any>)
-      },
-      parentState,
-      runtime
-    ) as State & S;
+    const initial = {
+      ...baseState,
+      ...legacyState,
+      ...stateOverrides
+    };
+    this._state = new State(initial, parentState, runtime) as State & S;
 
     this._host = document.createElement(this.hostTag());
-    if (typeof this.props.className === 'string') {
-      this._host.className = this.props.className;
+    const propClassString = this._propClassNames.join(' ');
+    if (propClassString) {
+      this._host.className = propClassString;
     }
-    if (this.applyIdToHost) {
+    if (this.props.id) {
+      this._host.id = this.props.id;
+    } else if (this.applyIdToHost) {
       this._host.id = this._id;
     }
 
     this.beforeMount();
 
-    const watchedKeys = new Set<string>([
-      ...Object.keys(base ?? {}),
-      ...Object.keys(extraState ?? {})
-    ]);
+    const watchedKeys = new Set<string>(Object.keys(initial ?? {}));
 
     for (const key of watchedKeys) {
-      if (key === 'hidden' || key === 'hiddenInert') {
-        this._unsubs.push(this._state.on(key, () => this.applyHidden(), { immediate: false }));
-      } else {
-        this._unsubs.push(this._state.on(key, () => this.requestRender(), { immediate: false }));
-      }
+      this._unsubs.push(
+        this._state.on(
+          key,
+          () => this.onStateKeyChange(key as keyof S),
+          { immediate: false }
+        )
+      );
     }
 
     container.appendChild(this._host);
@@ -298,11 +315,11 @@ export abstract class Component<
     this._mounted = false;
     this._managedHostClasses = new Set();
     this._propClassNames = [];
-    this.props = {};
+    this.props = {} as P;
   }
 
   /** Find a component instance from a DOM node, if any. */
-  public static fromElement(el: Element | null): Component | undefined {
+  public static fromElement(el: Element | null): Component<any, any> | undefined {
     return el ? Component._byHost.get(el as HTMLElement) : undefined;
   }
 
@@ -377,28 +394,54 @@ export abstract class Component<
   }
 
   /**
-   * Split raw options into reactive overrides (initial state keys) vs plain props.
+   * Split the caller-provided configuration into reactive state overrides and plain props.
+   * Legacy `state` bags are merged only for keys present in {@link baseState}.
+   */
+  protected onStateKeyChange(key: keyof S): void {
+    if (key === 'hidden' || key === 'hiddenInert') {
+      this.applyHidden();
+    } else {
+      this.requestRender();
+    }
+  }
+
+  /**
+   * Split the caller-provided configuration into reactive state overrides, legacy state bag
+   * and plain props. Only keys present in {@link baseState} are considered valid state overrides.
    */
   protected splitOptions(
-    cfg: ComponentConfig<S, any>,
-    base: S
+    incoming: ComponentConfig<S, P>,
+    baseState: S
   ): {
     stateOverrides: Partial<S>;
-    props: Record<string, any>;
+    legacyState: Partial<S>;
+    props: P;
   } {
-    const stateKeys = new Set(Object.keys(base ?? {}));
-    const stateOverrides: Record<string, any> = {};
-    const props: Record<string, any> = {};
+    const stateKeys = new Set(Object.keys(baseState ?? {}));
 
-    for (const [k, v] of Object.entries(cfg ?? {})) {
-      if (k === 'state') continue;
-      if (stateKeys.has(k)) stateOverrides[k] = v;
-      else props[k] = v;
+    const stateOverrides: Record<string, any> = {};
+    const propsResult: Record<string, any> = {};
+    const legacyResult: Record<string, any> = {};
+
+    const legacyBag = (incoming as any)?.state;
+    if (legacyBag && typeof legacyBag === 'object') {
+      for (const [key, value] of Object.entries(legacyBag)) {
+        if (stateKeys.has(key)) {
+          legacyResult[key] = value;
+        }
+      }
+    }
+
+    for (const [key, value] of Object.entries(incoming ?? {})) {
+      if (key === 'state') continue;
+      if (stateKeys.has(key)) stateOverrides[key] = value;
+      else propsResult[key] = value;
     }
 
     return {
       stateOverrides: stateOverrides as Partial<S>,
-      props
+      legacyState: legacyResult as Partial<S>,
+      props: propsResult as P
     };
   }
 

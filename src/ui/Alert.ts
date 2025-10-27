@@ -1,39 +1,55 @@
 // src/ui/Alert.ts
 import { html } from 'uhtml';
-import {
-  Component,
-  type BuiltInComponentState,
-  type ComponentConfig
-} from './Component';
+import { Component, type ComponentState, type ComponentConfig } from './Component';
+import type { ComponentProps } from './types';
 import { Button } from './Button';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 export type Variant = 'solid' | 'soft' | 'outline';
 
-export interface AlertState extends BuiltInComponentState {
+/**
+ * Reactive state backing the {@link Alert} component.
+ */
+export interface AlertState extends ComponentState {
+  /** Visual variant controlling background and borders. */
   variant: Variant;
+  /** Semantic color to pick FlyonUI classes. */
   color: FlyonColor;
+  /** Optional heading text. */
   title: string | null;
+  /** Optional body copy. */
   message: string | null;
+  /** Optional bullet list rendered under the message. */
   list: string[] | null;
+  /** Optional icon class placed at the start. */
   icon: string | null;
+  /** Whether the alert can be dismissed. */
   dismissible: boolean;
+  /** Accessible label for the dismiss control. */
   closeLabel: string;
+  /** Enable responsive layout adjustments for complex alerts. */
   responsive: boolean;
 }
 
-export interface AlertProps {
+/**
+ * Non-reactive configuration for {@link Alert}.
+ */
+export interface AlertProps extends ComponentProps {
+  /** Action buttons rendered inline with the alert content. */
   actions?: Button[];
+  /** Callback fired when the dismiss button is activated. */
   onDismiss?: (cmp: Alert, ev: MouseEvent) => void;
-  className?: string;
 }
 
-export class Alert extends Component<AlertState> {
+/**
+ * Visual alert component capable of rendering icons, messages, lists and actions.
+ */
+export class Alert extends Component<AlertState, AlertProps> {
   private _buttons: Button[] = [];
 
   protected override initialState(): AlertState {
     return {
-      ...(super.initialState() as BuiltInComponentState),
+      ...(super.initialState() as ComponentState),
       variant: 'solid',
       color: 'default',
       title: null,
@@ -49,7 +65,7 @@ export class Alert extends Component<AlertState> {
   protected override beforeMount(): void {
     super.beforeMount();
 
-    const actions = (this.props as AlertProps).actions ?? [];
+    const actions = this.props.actions ?? [];
     this._buttons = Array.from(actions);
 
     for (const btn of this._buttons) {
@@ -118,7 +134,7 @@ export class Alert extends Component<AlertState> {
         class="ms-auto cursor-pointer leading-none"
         aria-label=${s.closeLabel}
         onclick=${(ev: MouseEvent) => {
-          (this.props as AlertProps).onDismiss?.(this, ev);
+          this.props.onDismiss?.(this, ev);
           this.requestRemove();
         }}
       >

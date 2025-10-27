@@ -1,16 +1,16 @@
 // src/ui/Progress.ts
 import { html } from 'uhtml';
-import {
-  Component,
-  type BuiltInComponentState,
-  type ComponentConfig
-} from './Component';
+import { Component, type ComponentState, type ComponentConfig } from './Component';
+import type { ComponentProps } from './types';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 
 type Orientation = 'horizontal' | 'vertical';
 type LabelMode = 'none' | 'inside' | 'end' | 'floating';
 
-export interface ProgressState extends BuiltInComponentState {
+/**
+ * Reactive state for {@link Progress}. Controls value, orientation and styling.
+ */
+export interface ProgressState extends ComponentState {
   value: number | null;
   min: number;
   max: number;
@@ -26,15 +26,21 @@ export interface ProgressState extends BuiltInComponentState {
   thicknessClass: string | null;
 }
 
-export interface ProgressProps {
+/**
+ * Non-reactive configuration for {@link Progress}.
+ */
+export interface ProgressProps extends ComponentProps {
+  /** Accessible label for the progress region. */
   ariaLabel?: string;
-  className?: string;
 }
 
-export class Progress extends Component<ProgressState> {
+/**
+ * Circular or linear progress indicator with optional labels and tones.
+ */
+export class Progress extends Component<ProgressState, ProgressProps> {
   protected override initialState(): ProgressState {
     return {
-      ...(super.initialState() as BuiltInComponentState),
+      ...(super.initialState() as ComponentState),
       value: 50,
       min: 0,
       max: 100,
@@ -89,7 +95,7 @@ export class Progress extends Component<ProgressState> {
           : `height:${pct}%`;
 
     const ariaNow = pct == null ? undefined : String(Math.round(pct));
-    const ariaLabel = (this.props as ProgressProps).ariaLabel ?? (pct == null ? 'Loading' : `${Math.round(pct)}% Progressbar`);
+    const ariaLabel = this.props.ariaLabel ?? (pct == null ? 'Loading' : `${Math.round(pct)}% Progressbar`);
 
     const labelText = s.labelText ?? (pct == null ? '' : `${Math.round(pct)}%`);
 

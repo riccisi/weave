@@ -1,19 +1,30 @@
-import { Component, type BuiltInComponentState } from './Component';
+import { Component, type ComponentState } from './Component';
+import type { ComponentProps } from './types';
 
-export interface InteractiveState extends BuiltInComponentState {
-  /** If true, the component considers itself disabled (local business logic). */
+/**
+ * Reactive state shared by interactive components.
+ * Adds disabled-related switches on top of {@link ComponentState}.
+ */
+export interface InteractiveComponentState extends ComponentState {
+  /** When true, the component should appear disabled and not respond to input. */
   disabled: boolean;
-  /** If true, a disabled component should also become inert for focus/screen readers. */
+  /**
+   * When true together with {@link disabled}, attempt to remove the component from the focus
+   * and accessibility tree (via `inert`, `aria-disabled`, etc.).
+   */
   disabledInert: boolean;
 }
 
 /**
  * Base class for interactive components (things that can be "disabled").
- * It extends Component and adds a "disabled" layer with parent-forcing.
+ *
+ * @typeParam S - Reactive state contract. Must include {@link InteractiveComponentState}.
+ * @typeParam P - Non-reactive props contract.
  */
 export abstract class InteractiveComponent<
-  S extends InteractiveState = InteractiveState
-> extends Component<S> {
+  S extends InteractiveComponentState = InteractiveComponentState,
+  P extends ComponentProps = ComponentProps
+> extends Component<S, P> {
   /** Tracks whether an ancestor container is forcing this component disabled. */
   private _forcedDisabledFromAncestor = false;
 
@@ -29,7 +40,7 @@ export abstract class InteractiveComponent<
    */
   protected override initialState(): S {
     return {
-      ...(super.initialState() as BuiltInComponentState),
+      ...(super.initialState() as ComponentState),
       disabled: false,
       disabledInert: false
     } as S;
@@ -67,21 +78,20 @@ export abstract class InteractiveComponent<
   }
 
   /**
-   * After mount, InteractiveComponent:
-   * - calls super.afterMount()
-   * - subscribes to its own disabled / disabledInert fields
-   *   to keep DOM attributes/classes in sync.
+   * Lifecycle hook ensuring disabled attributes are applied before the first render.
+   * Interactive components call {@link applyDisabled} once the host is created so that
+   * initial state/parent constraints are reflected immediately.
    */
-  protected override afterMount(): void {
-    super.afterMount();
+  protected override beforeMount(): void {
+    super.beforeMount();
+    this.applyDisabled();
+  }
 
-    const st = this.state();
-    this._unsubs.push(
-      st.on('disabled', () => this.applyDisabled(), { immediate: true })
-    );
-    this._unsubs.push(
-      st.on('disabledInert', () => this.applyDisabled(), { immediate: false })
-    );
+  protected override onStateKeyChange(key: keyof S): void {
+    super.onStateKeyChange(key);
+    if (key === 'disabled' || key === 'disabledInert') {
+      this.applyDisabled();
+    }
   }
 
   /**

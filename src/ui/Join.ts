@@ -4,15 +4,21 @@ import type { LayoutConfig } from './layouts/Layout';
 
 export type JoinOrientation = 'horizontal' | 'vertical';
 
+/**
+ * Non-reactive props for the join container helper.
+ */
 export interface JoinProps extends ContainerProps {
   orientation?: JoinOrientation;
   joinClassName?: string;
   deepTarget?: boolean;
 }
 
+/**
+ * Container preconfigured to apply the FlyonUI `join` layout to its children.
+ */
 export class Join<
   S extends ContainerState = ContainerState
-> extends Container<S> {
+> extends Container<S, JoinProps> {
   constructor(cfg: ComponentConfig<S, JoinProps> = {} as ComponentConfig<S, JoinProps>) {
     const {
       layout,

@@ -1,36 +1,43 @@
 import { html } from 'uhtml';
 import { Component, type ComponentConfig } from './Component';
-import { InteractiveComponent, type InteractiveState } from './InteractiveComponent';
+import { InteractiveComponent, type InteractiveComponentState } from './InteractiveComponent';
+import type { ComponentProps } from './types';
 import type { Layout, LayoutConfig } from './layouts/Layout';
 import { LayoutRegistry } from './layouts/LayoutRegistry';
 
-export interface ContainerState extends InteractiveState {
-  // Future container-specific reactive keys go here.
-}
+/**
+ * Base reactive state for containers. Subclasses extend this to add layout-related fields.
+ */
+export interface ContainerState extends InteractiveComponentState {}
 
-export interface ContainerProps {
+/**
+ * Non-reactive configuration for container-like components.
+ */
+export interface ContainerProps extends ComponentProps {
   /** Optional layout description (can be { type: 'join', ... } etc.) */
   layout?: LayoutConfig | Layout;
   /** Children components already constructed via factories. */
-  items?: Array<Component<any>>;
-  /** Extra class names for the host */
-  className?: string;
+  items?: Array<Component<any, any>>;
 }
 
+/**
+ * Generic container capable of hosting child components and applying declarative layouts.
+ */
 export class Container<
-  S extends ContainerState = ContainerState
-> extends InteractiveComponent<S> {
-  protected items: Component<any>[] = [];
+  S extends ContainerState = ContainerState,
+  P extends ContainerProps = ContainerProps
+> extends InteractiveComponent<S, P> {
+  protected items: Component<any, any>[] = [];
   private _layout?: Layout;
   private _layoutScheduled = false;
 
   protected override beforeMount(): void {
     super.beforeMount();
 
-    this._layout = LayoutRegistry.create((this.props as ContainerProps).layout);
+    this._layout = LayoutRegistry.create(this.props.layout);
 
-    const incoming = Array.isArray((this.props as ContainerProps).items)
-      ? ((this.props as ContainerProps).items as Component<any>[])
+    const incoming = Array.isArray(this.props.items)
+      ? (this.props.items as Component<any, any>[])
       : [];
     this.items = Array.from(incoming);
 
@@ -78,7 +85,7 @@ export class Container<
   }
 
   /** Add a child component at runtime. */
-  public add(child: Component<any>): this {
+  public add(child: Component<any, any>): this {
     this.items.push(child);
     const staging = document.createElement('div');
     child.mount(staging, this.state());
@@ -90,7 +97,7 @@ export class Container<
   }
 
   /** Remove a child component at runtime. */
-  public remove(child: Component<any>): this {
+  public remove(child: Component<any, any>): this {
     const idx = this.items.indexOf(child);
     if (idx >= 0) {
       this.items.splice(idx, 1);
