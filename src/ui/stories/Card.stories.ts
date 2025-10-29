@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/html';
-import { card, type CardActionsAlign, type CardImagePlacement } from '../Card';
+import { card } from '../Card';
 import { button, Button } from '../Button';
 import { mountComponent } from '../testing/mount';
 import type { Component } from '../Component';
@@ -36,16 +36,11 @@ const meta = {
     description: { control: 'text' },
     imageSrc: { control: 'text' },
     imageAlt: { control: 'text' },
-    imagePlacement: { control: 'inline-radio', options: ['top', 'side'] satisfies CardImagePlacement[] },
+    imagePlacement: { control: 'inline-radio', options: ['top', 'side']},
     imageFull: { control: 'boolean' },
     compact: { control: 'boolean' },
     glass: { control: 'boolean' },
     bordered: { control: 'boolean' },
-    actionsAlign: {
-      control: 'select',
-      options: ['start', 'center', 'end', 'between', 'around', 'evenly'] satisfies CardActionsAlign[]
-    },
-    actionsWrap: { control: 'boolean' },
     bodyClassName: { control: 'text' },
     figureClassName: { control: 'text' },
     imageClassName: { control: 'text' },
@@ -66,9 +61,7 @@ const meta = {
     compact: false,
     glass: false,
     bordered: false,
-    actionsAlign: 'end',
-    actionsWrap: false,
-    className: '',
+    className: 'sm:max-w-sm',
     bodyClassName: '',
     figureClassName: '',
     imageClassName: '',

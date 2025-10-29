@@ -1,289 +1,236 @@
 import { html } from 'uhtml';
-import type { Component as BaseComponent, ComponentConfig } from './Component';
 import {
-  Container,
-  type ContainerProps,
-  type ContainerState
+    Container,
+    type ContainerState,
+    type ContainerProps,
+    container,                // factory: (cfg) => new Container(cfg)
 } from './Container';
+import { Component, type ComponentConfig } from './Component';
 import type { Layout } from './layouts/Layout';
+import {markup} from "./Markup";
+import {flexLayout} from "./layouts/FlexLayout";
 
-export type CardImagePlacement = 'top' | 'side';
-export type CardActionsAlign = 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
-
-/**
- * Reactive state describing the card layout, media and action presentation.
- */
+/** Stato reattivo della Card. Estende ContainerState (hidden, disabled, ecc.) */
 export interface CardState extends ContainerState {
-  title: string | null;
-  description: string | null;
-  imageSrc: string | null;
-  imageAlt: string;
-  imagePlacement: CardImagePlacement;
-  compact: boolean;
-  glass: boolean;
-  bordered: boolean;
-  imageFull: boolean;
-  actionsAlign: CardActionsAlign;
-  actionsWrap: boolean;
+    title: string | null;
+    description: string | null;
+
+    imageSrc: string | null;
+    imageAlt: string;
+    imagePlacement: 'top' | 'side'; // side -> aggiunge "card-side"
+    compact: boolean;
+    glass: boolean;
+    bordered: boolean;
+    imageFull: boolean;
 }
 
-/**
- * Non-reactive card configuration including actions and custom class hooks.
- */
+/** Props "statiche" per Card (non reattive) */
 export interface CardProps extends ContainerProps {
-  actions?: Array<BaseComponent<any, any>>;
-  actionsLayout?: Layout;
-  bodyClassName?: string;
-  figureClassName?: string;
-  imageClassName?: string;
-  actionsClassName?: string;
+
+    /** Lista di bottoni/azioni da mettere nel footer della card-body */
+    actions?: Array<Component | ComponentConfig>;
+    actionsLayout?: Layout;
+
+    /** Classi aggiuntive su specifiche sezioni */
+    figureClassName?: string;   // wrapper figura (card-image)
+    imageClassName?: string;    // <img>
+    bodyClassName?: string;     // card-body
+    actionsClassName?: string;  // card-actions
+    className?: string;         // card wrapper (<div class="card ...">)
 }
 
 /**
- * Composite component combining media, text and child content inside a FlyonUI card shell.
+ * ---- Piccoli componenti foglia per header e media ----
+ * Li trattiamo come veri Component, così ereditano state() e props() dalla Card.
+ */
+
+class CardImage extends Component<CardState, CardProps> {
+    protected hostTag(): string {
+        return 'figure';
+    }
+
+    protected view() {
+        const s = this.state();
+        const src = s.imageSrc;
+
+        const p = this.props as CardProps;
+        // classi per <figure>
+        const figureClasses = [
+            'card-image',
+            p.figureClassName ?? null
+        ].filter(Boolean);
+
+        this.syncHostClasses(new Set(figureClasses));
+
+        // classi per <img>
+        const imgCls = [
+            p.imageClassName ?? null
+        ].filter(Boolean).join(' ');
+
+        return html`
+            <img
+                src=${src}
+                alt=${s.imageAlt ?? ''}
+                class=${imgCls}
+            />
+        `;
+    }
+}
+
+/**
+ * Card
+ * È un Container, MA costruisce da sé la sua struttura interna in beforeMount():
+ *   [ CardImage? , BodyContainer ]
+ *
+ * Dove BodyContainer è un Container con class="card-body"
+ * che contiene (in ordine):
+ *   CardTitle?
+ *   CardDescription?
+ *   userItems...
+ *   ActionsContainer?
+ *
+ * ActionsContainer è un Container con class="card-actions ...".
+ *
+ * Così la Card rispetta esattamente il markup FlyonUI,
+ * senza dover sovrascrivere la logica core di Container.
  */
 export class Card extends Container<CardState, CardProps> {
-  private _bodyLayout?: Layout;
-  private _bodyLayoutScheduled = false;
-  private _bodyEl?: HTMLDivElement | null;
 
-  private _actionsContainer?: Container;
-  private _actionsManagedClasses: Set<string> = new Set();
-  private _actionsDisabledUnsub?: () => void;
+    /** Stato iniziale della Card (reattivo). */
+    protected override initialState(): CardState {
+        return {
+            ...(super.initialState() as ContainerState),
+            title: 'Card title',
+            description: null,
 
-  protected override initialState(): CardState {
-    return {
-      ...(super.initialState() as ContainerState),
-      title: 'Card title',
-      description: null,
-      imageSrc: null,
-      imageAlt: 'Card image',
-      imagePlacement: 'top',
-      compact: false,
-      glass: false,
-      bordered: false,
-      imageFull: false,
-      actionsAlign: 'end',
-      actionsWrap: false
-    } satisfies CardState;
-  }
-
-  protected override beforeMount(): void {
-    const props = this.props as CardProps;
-    const layoutProp = props.layout as Layout | undefined;
-    if (layoutProp) {
-      if (typeof layoutProp.apply !== 'function') {
-        throw new Error('Card.layout must be a Layout instance (use flexLayout/gridLayout/joinLayout).');
-      }
-      this._bodyLayout = layoutProp;
-      props.layout = undefined;
+            imageSrc: null,
+            imageAlt: 'Card image',
+            imagePlacement: 'top',  // 'side' => card-side
+            compact: false,
+            glass: false,
+            bordered: false,
+            imageFull: false
+        } satisfies CardState;
     }
 
-    super.beforeMount();
+    /**
+     * Prima che il Container base monti i figli,
+     * costruiamo noi la gerarchia interna da passargli come `props.items`.
+     */
+    protected override beforeMount(): void {
+        const s = this.state();
+        const p = this.props as CardProps;
 
-    if (layoutProp !== undefined) {
-      props.layout = layoutProp;
+        // ---- 1. Cloniamo gli items utente ----
+        const userItems = Array.isArray(p.items) ? [...p.items] : [];
+
+        // ---- 2. Prep header (title/description) come componenti separati ----
+        const headerPieces: Array<Component | ComponentConfig> = [];
+        if (s.title) {
+            headerPieces.push(markup({
+                tag: 'h2',
+                className: 'card-title',
+                render: () => html`${s.title}`
+            }));
+        }
+
+        if (s.description) {
+            headerPieces.push(markup({
+                tag: 'p',
+                className: 'opacity-70 text-sm',
+                render: () => html`${s.description}`
+            }));
+        }
+
+        // ---- 3. Prep actions container (footer della card-body) ----
+        let actionsContainer: Container<CardState, CardProps> | undefined = undefined;
+        const actions = Array.isArray(p.actions) ? p.actions : [];
+        if (actions.length > 0) {
+
+            const actionLayout = p.actionsLayout ?? undefined;
+
+            actionsContainer = container({
+                className: 'card-actions',
+                layout: actionLayout,
+                items: actions
+            });
+        }
+
+        // ---- 4. Body container (= card-body) ----
+        // ordine nel body:
+        //   [CardTitle?, CardDescription?, ...userItems, ActionsContainer?]
+        const bodyContentItems: Array<Component | ComponentConfig> = [
+            ...headerPieces,
+            ...userItems
+        ];
+        if (actionsContainer) {
+            bodyContentItems.push(actionsContainer);
+        }
+
+        const bodyContainer = container({
+            className: [
+                'card-body',
+                (p.bodyClassName ?? null)
+            ].filter(Boolean).join(' '),
+            layout: p.layout,           // "layout del body", NON del wrapper card
+            items: bodyContentItems
+        });
+
+        // ---- 5. Figura immagine opzionale ----
+        let figureComp: CardImage | undefined = undefined;
+        if (s.imageSrc) {
+            figureComp = new CardImage({
+                figureClassName: p.figureClassName,
+                imageClassName: p.imageClassName
+            });
+        }
+
+        // ---- 6. Imposto gli items REALI della Card ----
+        // Se c'è l'immagine va prima, poi il body.
+        const finalItems: Array<Component | ComponentConfig> = [];
+        if (figureComp) finalItems.push(figureComp);
+        finalItems.push(bodyContainer);
+
+        // Sovrascriviamo gli items del Container base
+        (this.props as any).items = finalItems;
+
+        // La Card "esterna" non deve avere un layout proprio,
+        // perché la disposizione (verticale, side...) è data dalle classi flyonUI
+        // tipo 'card-side', 'image-full', ecc.
+        (this.props as any).layout = undefined;
+
+        // Ora lasciamo che Container.beforeMount() faccia il suo lavoro:
+        // - monterà figureComp/bodyContainer in staging ereditando lo state(),
+        // - gestirà subscription disabled/hidden, ecc.
+        super.beforeMount();
     }
 
-    const actions = props.actions ?? [];
-    if (actions.length) {
-      const actionsLayout = props.actionsLayout;
-      if (actionsLayout && typeof actionsLayout.apply !== 'function') {
-        throw new Error('Card.actionsLayout must be a Layout instance.');
-      }
-      const opts: ComponentConfig<ContainerState, ContainerProps> = {
-        items: actions,
-        layout: actionsLayout
-      };
-      this._actionsContainer = new Container(opts);
-      const staging = document.createElement('div');
-      this._actionsContainer.mount(staging, this.state());
-      this.syncActionsDisabled();
+    /** Applica le classi della shell .card al nodo host e poi rende i child effettivi. */
+    protected override view() {
+        const s = this.state();
+        const p = this.props as CardProps;
+
+        const wrapperClasses = [
+            'card',
+            'bg-base-100',
+            'shadow-md',
+            s.compact ? 'card-compact' : null,
+            s.imagePlacement === 'side' ? 'card-side' : null,
+            s.imageFull ? 'image-full' : null,
+            s.glass ? 'glass' : null,
+            s.bordered ? 'border' : null,
+            p.className ?? null
+        ].filter(Boolean);
+
+        // sincronia classi sul host (tipo Button.syncHostClasses)
+        this.syncHostClasses(new Set(wrapperClasses));
+
+        // il render "vero" dei figli lo facciamo riusando il view() del Container base:
+        return super.view();
     }
-
-    this._actionsDisabledUnsub = this.state().on(
-      'disabled',
-      () => this.syncActionsDisabled(),
-      { immediate: true }
-    );
-  }
-
-  public override setDisabledFromParent(flag: boolean): void {
-    super.setDisabledFromParent(flag);
-    this.syncActionsDisabled();
-  }
-
-  protected override view() {
-    const s = this.state();
-
-    const rootClasses = this.hostClasses(
-      'card',
-      'bg-base-100',
-      'shadow-md',
-      s.compact ? 'card-compact' : null,
-      s.imagePlacement === 'side' ? 'card-side' : null,
-      s.imageFull ? 'image-full' : null,
-      s.glass ? 'glass' : null,
-      s.bordered ? 'border' : null
-    );
-    this.syncHostClasses(rootClasses);
-
-    const image = this.renderImage();
-    const body = this.renderBody();
-
-    return html`${image} ${body}`;
-  }
-
-  protected override doRender(): void {
-    super.doRender();
-
-    this._bodyEl = this.el()?.querySelector('.card-body');
-    this.applyBodyLayout();
-    this.applyActionsClasses();
-  }
-
-  protected override requestLayout(): void {
-    super.requestLayout();
-    this.requestBodyLayout();
-  }
-
-  private renderBody() {
-    const s = this.state();
-    const props = this.props as CardProps;
-    const bodyClasses = this.classesToString(
-      this.hostClasses('card-body', props.bodyClassName)
-    );
-
-    const title = s.title ? html`<h2 class="card-title">${s.title}</h2>` : null;
-    const description = s.description ? html`<p>${s.description}</p>` : null;
-    const content = super.view();
-    const actions = this.renderActions();
-
-    return html`<div class=${bodyClasses}>${title} ${description} ${content} ${actions}</div>`;
-  }
-
-  private renderImage() {
-    const s = this.state();
-    const props = this.props as CardProps;
-    const src = s.imageSrc?.trim();
-    if (!src) return null;
-    const alt = s.imageAlt ?? '';
-    const figureClasses = this.classesToString(
-      this.hostClasses('card-image', props.figureClassName)
-    );
-    const imgClasses = this.classesToString(
-      this.hostClasses('rounded-xl', props.imageClassName)
-    );
-    return html`<figure class=${figureClasses}><img src=${src} alt=${alt} class=${imgClasses} /></figure>`;
-  }
-
-  private renderActions() {
-    if (!this._actionsContainer) return null;
-    return this._actionsContainer.el();
-  }
-
-  private requestBodyLayout(): void {
-    if (!this._bodyLayout || this._bodyLayoutScheduled) return;
-    this._bodyLayoutScheduled = true;
-    queueMicrotask(() => {
-      this._bodyLayoutScheduled = false;
-      this.applyBodyLayout();
-    });
-  }
-
-  private applyBodyLayout(): void {
-    if (!this._bodyLayout) return;
-    const body = (this._bodyEl ||= this.el()?.querySelector('.card-body'));
-    if (!body) return;
-    this._bodyLayout.apply({
-      host: body,
-      children: this.items,
-      state: this.state(),
-      containerProps: this.props as Record<string, any>
-    });
-  }
-
-  private applyActionsClasses(): void {
-    const host = this._actionsContainer?.el();
-    if (!host) return;
-    const s = this.state();
-    const props = this.props as CardProps;
-    const alignClass = this.actionsAlignmentClass(s.actionsAlign);
-    const wrapClass = s.actionsWrap ? 'flex-wrap' : null;
-    const classes = this.hostClasses(
-      'card-actions',
-      'items-center',
-      'gap-2',
-      alignClass,
-      wrapClass,
-      props.actionsClassName
-    );
-
-    for (const cls of this._actionsManagedClasses) {
-      if (!classes.has(cls)) host.classList.remove(cls);
-    }
-    for (const cls of classes) {
-      if (!this._actionsManagedClasses.has(cls)) host.classList.add(cls);
-    }
-    this._actionsManagedClasses = classes;
-  }
-
-  private actionsAlignmentClass(align: CardActionsAlign): string | null {
-    switch (align) {
-      case 'start':
-        return 'justify-start';
-      case 'center':
-        return 'justify-center';
-      case 'end':
-        return 'justify-end';
-      case 'between':
-        return 'justify-between';
-      case 'around':
-        return 'justify-around';
-      case 'evenly':
-        return 'justify-evenly';
-      default:
-        return null;
-    }
-  }
-
-  private syncActionsDisabled(): void {
-    if (!this._actionsContainer) return;
-    const effective = this._lastEffectiveDisabled || this.state().disabled === true;
-    this._actionsContainer.setDisabledFromParent(!!effective);
-  }
-
-  private classesToString(classes: Iterable<string>): string {
-    return Array.from(classes).join(' ');
-  }
-
-  public override beforeUnmount(): void {
-    if (this._bodyLayout && this._bodyEl) {
-      this._bodyLayout.dispose?.({
-        host: this._bodyEl,
-        children: this.items,
-        state: this.state(),
-        containerProps: this.props as Record<string, any>
-      });
-    }
-    this._bodyLayout = undefined;
-    this._bodyLayoutScheduled = false;
-    this._bodyEl = undefined;
-
-    this._actionsDisabledUnsub?.();
-    this._actionsDisabledUnsub = undefined;
-    if (this._actionsContainer) {
-      this._actionsContainer.unmount();
-      this._actionsContainer = undefined;
-    }
-    this._actionsManagedClasses = new Set();
-
-    super.beforeUnmount();
-  }
 }
 
-export function card(
-  cfg: ComponentConfig<CardState, CardProps> = {}
-): Card {
-  return new Card(cfg);
+/** Factory ergonomica stile gli altri componenti */
+export function card(cfg: ComponentConfig<CardState, CardProps> = {}): Card {
+    return new Card(cfg);
 }

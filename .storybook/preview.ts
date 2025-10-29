@@ -6,7 +6,7 @@ const preview: Preview = {
         controls: { expanded: true },
         // In SB9 il logging “Actions” è integrato: l'uso di argTypesRegex continua a funzionare
         actions: { argTypesRegex: '^on[A-Z].*' },
-        a11y: { element: '#storybook-root' },
+        a11y: { context: '#storybook-root' },
     },
 };
 export default preview;

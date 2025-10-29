@@ -1,6 +1,7 @@
 import { Component, type ComponentProps, type ComponentConfig } from './Component';
 import { InteractiveComponent, type InteractiveComponentState } from './InteractiveComponent';
 import type { Layout } from './layouts/Layout';
+import {html} from "uhtml";
 
 /**
  * Base reactive state for containers. Subclasses extend this to add layout-related fields.
@@ -80,7 +81,7 @@ export class Container<
 
   /** view(): render child hosts within our host */
   protected override view(): any {
-    return this.items.map((c) => c.el());
+      return html`${this.items.map(child => child.el())}`;
   }
 
   /** After render, reapply the layout. */

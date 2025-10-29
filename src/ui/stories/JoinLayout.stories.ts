@@ -8,7 +8,7 @@ import { button } from '../Button';
 import { joinLayout } from '../layouts/JoinLayout';
 
 const meta = {
-  title: 'Weave/Layouts/Join',
+  title: 'Layout/Join',
   render: (args) => {
     const items = [
       button({ text: 'Left', color: 'primary' }),
