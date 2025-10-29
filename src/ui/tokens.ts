@@ -9,6 +9,8 @@ export type FlyonColor =
     | 'warning'
     | 'error';
 
+export type FlyonLinkColor = FlyonColor | 'neutral';
+
 export const FlyonColorClasses = {
     button(color: FlyonColor): string | null {
         const m: Record<FlyonColor, string | null> = {
@@ -48,6 +50,21 @@ export const FlyonColorClasses = {
             success: 'progress-success',
             warning: 'progress-warning',
             error: 'progress-error',
+        };
+        return m[color] ?? null;
+    },
+
+    link(color: FlyonLinkColor): string | null {
+        const m: Record<FlyonLinkColor, string | null> = {
+            default: null,
+            primary: 'link-primary',
+            secondary: 'link-secondary',
+            accent: 'link-accent',
+            neutral: 'link-neutral',
+            info: 'link-info',
+            success: 'link-success',
+            warning: 'link-warning',
+            error: 'link-error',
         };
         return m[color] ?? null;
     },
