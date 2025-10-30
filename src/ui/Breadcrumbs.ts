@@ -74,21 +74,31 @@ export class Breadcrumbs extends Component<BreadcrumbsState, BreadcrumbsProps> {
       return html`<span class="${baseClasses} font-semibold" aria-current="page">${crumb.label}</span>`;
     }
 
-    const commonAttrs = {
-      class: `${baseClasses} text-primary hover:underline focus:outline-none focus-visible:ring` as string,
-      onclick: crumb.onClick
-        ? (ev: MouseEvent) => {
-            crumb.onClick?.(ev);
-          }
-        : undefined
-    };
+    const interactiveClasses = `${baseClasses} text-primary hover:underline focus:outline-none focus-visible:ring`;
+    const handleClick = crumb.onClick
+      ? (ev: MouseEvent) => {
+          crumb.onClick?.(ev);
+        }
+      : undefined;
 
     if (crumb.href) {
-      return html`<a href=${crumb.href} ...${commonAttrs}>${crumb.label}</a>`;
+      return html`<a
+        href=${crumb.href}
+        class=${interactiveClasses}
+        onclick=${handleClick}
+      >
+        ${crumb.label}
+      </a>`;
     }
 
     if (crumb.onClick) {
-      return html`<button type="button" ...${commonAttrs}>${crumb.label}</button>`;
+      return html`<button
+        type="button"
+        class=${interactiveClasses}
+        onclick=${handleClick}
+      >
+        ${crumb.label}
+      </button>`;
     }
 
     return html`<span class="${baseClasses}">${crumb.label}</span>`;
