@@ -67,11 +67,11 @@ export class Breadcrumbs extends Component<BreadcrumbsState, BreadcrumbsProps> {
     const baseClasses = 'inline-flex items-center gap-1';
 
     if (crumb.disabled) {
-      return html`<span class="${baseClasses} opacity-60 cursor-not-allowed">${crumb.label}</span>`;
+      return html`<span class=${`${baseClasses} opacity-60 cursor-not-allowed`}>${crumb.label}</span>`;
     }
 
     if (isLast) {
-      return html`<span class="${baseClasses} font-semibold" aria-current="page">${crumb.label}</span>`;
+      return html`<span class=${`${baseClasses} font-semibold`} aria-current="page">${crumb.label}</span>`;
     }
 
     const interactiveClasses = `${baseClasses} text-primary hover:underline focus:outline-none focus-visible:ring`;
@@ -101,7 +101,7 @@ export class Breadcrumbs extends Component<BreadcrumbsState, BreadcrumbsProps> {
       </button>`;
     }
 
-    return html`<span class="${baseClasses}">${crumb.label}</span>`;
+    return html`<span class=${baseClasses}>${crumb.label}</span>`;
   }
 
   private separatorSymbol(type: BreadcrumbsState['separator']): string {
