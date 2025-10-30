@@ -15,6 +15,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "dompurify": "^3.3.0",
     "flyonui": "^2.4.1",
     "uhtml": "^4.5.0"
   },
@@ -26,11 +27,13 @@
     "@storybook/addon-vitest": "^10.0.0",
     "@storybook/html-vite": "^10.0.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/dompurify": "^3.0.5",
     "@types/node": "^24.7.2",
     "@typescript-eslint/eslint-plugin": "^8.46.1",
     "@typescript-eslint/parser": "^8.46.1",
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-storybook": "10.0.0",
     "eslint-plugin-vitest": "^0.5.4",
     "globals": "^16.4.0",
     "prettier": "^3.6.2",
@@ -39,7 +42,6 @@
     "typescript": "^5.6.2",
     "typescript-eslint": "^8.46.1",
     "vite": "^7.1.9",
-    "vitest": "^3.2.4",
-    "eslint-plugin-storybook": "10.0.0"
+    "vitest": "^3.2.4"
   }
 }

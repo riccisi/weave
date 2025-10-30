@@ -5,6 +5,7 @@ import { markup } from '../Markup';
 import { button } from '../Button';
 import { mountComponent } from '../testing/mount';
 import { html } from 'uhtml';
+import {card} from "../Card";
 
 const meta = {
   title: 'Weave/AppShell',
@@ -28,13 +29,11 @@ function sidebarList(title: string, entries: string[]) {
 }
 
 function contentSection(title: string, body: string) {
-  return markup({
-    className: 'card bg-base-100 shadow-md',
-    render: () => html`<div class="card-body space-y-2">
-      <h3 class="card-title">${title}</h3>
-      <p class="text-sm opacity-80">${body}</p>
-    </div>`
-  });
+    return card({
+        title: title,
+        description: 'ciao',
+        //className: 'bg-base-100 shadow-md'
+    });
 }
 
 export const DesktopStaticSidebar: Story = {
