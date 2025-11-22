@@ -1,156 +1,138 @@
 // src/ui/Alert.ts
 import { html } from 'uhtml';
-import { Component, type ComponentState, type ComponentProps, type ComponentConfig } from './Component';
+import { slot, Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
 import { Button } from './Button';
 import { FlyonColor, FlyonColorClasses } from './tokens';
+import { content, Content, type ContentConfig } from './Content'; // nuovo Content unificato
 
-export type Variant = 'solid' | 'soft' | 'outline';
+export type Variant = 'solid' | 'soft' | 'outline' | 'dashed';
 
-/**
- * Reactive state backing the {@link Alert} component.
- */
 export interface AlertState extends ComponentState {
-  /** Visual variant controlling background and borders. */
-  variant: Variant;
-  /** Semantic color to pick FlyonUI classes. */
-  color: FlyonColor;
-  /** Optional heading text. */
-  title: string | null;
-  /** Optional body copy. */
-  message: string | null;
-  /** Optional bullet list rendered under the message. */
-  list: string[] | null;
-  /** Optional icon class placed at the start. */
-  icon: string | null;
-  /** Whether the alert can be dismissed. */
-  dismissible: boolean;
-  /** Accessible label for the dismiss control. */
-  closeLabel: string;
-  /** Enable responsive layout adjustments for complex alerts. */
-  responsive: boolean;
+    variant: Variant;
+    color: FlyonColor;
+    title: string | null;
+    icon: string | null;
 }
 
-/**
- * Non-reactive configuration for {@link Alert}.
- */
 export interface AlertProps extends ComponentProps {
-  /** Action buttons rendered inline with the alert content. */
-  actions?: Button[];
-  /** Callback fired when the dismiss button is activated. */
-  onDismiss?: (cmp: Alert, ev: MouseEvent) => void;
+    /** Contenuto dell’alert: string | (s)=>uhtml|string | ContentConfig | Content */
+    content?: string | ((s: any) => any) | ContentConfig | Content;
+
+    /** Pulsanti azione renderizzati nello slot 'actions'. */
+    actions?: Button[];
 }
 
-/**
- * Visual alert component capable of rendering icons, messages, lists and actions.
- */
 export class Alert extends Component<AlertState, AlertProps> {
-  private _buttons: Button[] = [];
+    private _buttons: Button[] = [];
+    private _content?: Content;
 
-  protected override initialState(): AlertState {
-    return {
-      ...(super.initialState() as ComponentState),
-      variant: 'solid',
-      color: 'default',
-      title: null,
-      message: 'A quick alert conveying key information or prompting action within a system.',
-      list: null,
-      icon: null,
-      dismissible: false,
-      closeLabel: 'Close',
-      responsive: false
-    } satisfies AlertState;
-  }
-
-    protected idPrefix(): string {
-        return 'alert';
+    protected override initialState(): AlertState {
+        return {
+            ...(super.initialState() as ComponentState),
+            variant: 'solid',
+            color: 'default',
+            title: null,
+            icon: null
+        } satisfies AlertState;
     }
 
-  protected override beforeMount(): void {
-    super.beforeMount();
+    protected override afterMount(): void {
+        super.afterMount();
 
-    const actions = this.props.actions ?? [];
-    this._buttons = Array.from(actions);
+        // --- Content (slot 'content')
+        const p = this.props();
+        this._content = this.normalizeContent(p.content);
+        if (this._content) {
+            this._content.mount(this.slotEl('content'), this);
+        }
 
-    for (const btn of this._buttons) {
-      const staging = document.createElement('div');
-      btn.mount(staging, this.state());
-    }
-  }
-
-  protected override beforeUnmount(): void {
-    for (const b of this._buttons) b.unmount();
-    this._buttons = [];
-    super.beforeUnmount();
-  }
-
-  protected override view() {
-    const s = this.state();
-    const host = this.el();
-
-    const classes = this.hostClasses('alert');
-
-    if (s.variant === 'soft') classes.add('alert-soft');
-    else if (s.variant === 'outline') classes.add('alert-outline');
-
-    const colorCls = FlyonColorClasses.alert(s.color);
-    if (colorCls) classes.add(colorCls);
-
-    const needsWrap = s.icon || this._buttons.length || s.title || s.list || s.responsive;
-    if (needsWrap && s.responsive) {
-      classes.add('max-sm:flex-col');
-      classes.add('max-sm:items-center');
-      classes.add('flex');
-      classes.add('items-start');
-      classes.add('gap-4');
+        // --- Action
+        this._buttons = Array.isArray(p.actions) ? [...p.actions] : [];
+        if (this._buttons.length) {
+            const anchor = this.el()!.querySelector('.mt-4')!;
+            for (const btn of this._buttons) btn.mount(anchor, this);
+        }
     }
 
-    if (s.dismissible) {
-      classes.add('transition');
-      classes.add('duration-300');
-      classes.add('ease-in-out');
-      classes.add('removing:opacity-0');
-      classes.add('removing:translate-x-5');
+    protected override beforeUnmount(): void {
+        for (const b of this._buttons) b.unmount();
+        this._buttons = [];
+        this._content?.unmount();
+        this._content = undefined;
+        super.beforeUnmount();
     }
 
-    this.syncHostClasses(classes);
+    protected override view() {
+        const s = this.state();
+        const p = this.props();
 
-    host.setAttribute('role', 'alert');
+        // Classi base + variant
+        const classes = new Set<string>(['alert']);
+        if (s.variant === 'soft') classes.add('alert-soft');
+        if (s.variant === 'outline') classes.add('alert-outline');
+        if (s.variant === 'dashed') {
+            classes.add('alert-outline');
+            classes.add('border-dashed');
+        }
 
-    const iconEl = s.icon ? html`<span class=${s.icon}></span>` : null;
+        // Colore Flyon
+        const colorCls = FlyonColorClasses.alert(s.color);
+        if (colorCls) classes.add(colorCls);
 
-    const titleEl = s.title ? html`<h5 class="text-lg font-semibold">${s.title}</h5>` : null;
-    const messageEl = s.message && !s.list ? html`<p>${s.message}</p>` : null;
-    const listEl = s.list?.length
-      ? html`<ul class="mt-1.5 list-inside list-disc">${s.list.map((li) => html`<li>${li}</li>`)}</ul>`
-      : null;
+        classes.add('flex');
+        classes.add('items-start');
+        classes.add('gap-4');
+        // classes.add('max-sm:flex-col');
+        // classes.add('max-sm:items-center');
 
-    const textCol = (titleEl || listEl)
-      ? html`<div class="flex flex-col gap-1">${titleEl} ${messageEl} ${listEl}</div>`
-      : html`${messageEl}`;
+        const cls = Array.from(classes).join(' ');
 
-    const actionsEl = this._buttons.length
-      ? html`<div class="mt-4 flex gap-2">${this._buttons.map((b) => b.el())}</div>`
-      : null;
+        // Parti opzionali
+        const iconEl  = s.icon  ? html`<span class="${`icon-[tabler--${s.icon}] shrink-0 size-6`}"></span>` : null;
+        const titleEl = s.title ? html`<h5 class="text-lg font-semibold">${s.title}</h5>` : null;
 
-    const closeBtn = s.dismissible ? html`
-      <button
-        class="ms-auto cursor-pointer leading-none"
-        aria-label=${s.closeLabel}
-        onclick=${(ev: MouseEvent) => {
-          this.props.onDismiss?.(this, ev);
-          this.requestRemove();
-        }}
-      >
-        <span class="icon-[tabler--x] size-5"></span>
-      </button>
-    ` : null;
+        // Slot del contenuto ricco (fornito da Content)
+        const contentSlot = slot('content');
 
-    return html`${iconEl} ${textCol} ${actionsEl} ${closeBtn}`;
-  }
+        // Slot azioni (i Button sono montati in afterMount)
+        const actionsSlot = p.actions && p.actions.length ? html`<div class="mt-4 flex gap-2"></div>` : null;
+
+        // Layout: [icon] [ title + content ] [ actions ] [ close ]
+        return html`
+            <div class=${cls ?? null} role="alert">
+                ${iconEl ?? null}
+                ${titleEl ? html`<div class="flex flex-col gap-1">${titleEl} ${contentSlot}</div>` : html`${contentSlot}`}
+                ${actionsSlot ?? null}
+            </div>
+        `;
+    }
+
+    // ---------- helpers -----------
+
+    private normalizeContent(src: AlertProps['content']): Content | undefined {
+        if (!src) return undefined;
+        if (src instanceof Content) return src;
+        // string | fn | ContentConfig → content(...)
+        return content(typeof src === 'object' && !('raw' in (src as any)) ? (src as ContentConfig) : (src as any));
+    }
 }
 
-export function alert(
-  cfg: ComponentConfig<AlertState, AlertProps> = {}
-): Alert {
-  return new Alert(cfg);
+export function alert(cfg: ComponentConfig<AlertState, AlertProps> = {}): Alert {
+    return new Alert(cfg);
+}
+
+export function info(cfg: ComponentConfig<AlertState, AlertProps> = {}): Alert {
+    return alert({ ...cfg, color: 'info', icon: 'info' });
+}
+
+export function success(cfg: ComponentConfig<AlertState, AlertProps> = {}): Alert {
+    return alert({ ...cfg, color: 'success', icon: 'check' });
+}
+
+export function warning(cfg: ComponentConfig<AlertState, AlertProps> = {}): Alert {
+    return alert({ ...cfg, color: 'warning', icon: 'alert-triangle' });
+}
+
+export function error(cfg: ComponentConfig<AlertState, AlertProps> = {}): Alert {
+    return alert({ ...cfg, color: 'error', icon: 'x-circle' });
 }

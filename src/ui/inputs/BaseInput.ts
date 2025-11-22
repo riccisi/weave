@@ -1,300 +1,452 @@
-import { html } from 'uhtml';
-import {
-  InteractiveComponent,
-  type InteractiveComponentState
-} from '../InteractiveComponent';
-import type { ComponentProps } from '../Component';
+import {html, type Hole} from 'uhtml';
+import {InteractiveComponent, type InteractiveComponentState} from '../InteractiveComponent';
+import type {ComponentProps} from '../Component';
 
 export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type LabelMode = 'none' | 'inline' | 'floating';
 
 export interface ValidationResult {
-  valid: boolean;
-  message?: string;
+    valid: boolean;
+    message?: string;
 }
 
 export interface BaseInputState<T> extends InteractiveComponentState {
-  value: T | null;
-  readonly: boolean;
-  required: boolean;
-  size: InputSize;
-  placeholder: string | null;
-  label: string | null;
-  labelMode: LabelMode;
-  helperText: string | null;
-  touched: boolean;
-  valid: boolean | null;
-  invalidMessage: string | null;
-  validationEnabled: boolean;
+    value: T | null;
+    readonly: boolean;
+    required: boolean;
+    size: InputSize;
+    placeholder: string | null;
+    label: string | null;
+    labelMode: LabelMode;
+    helperText: string | null;
+    touched: boolean;
+    valid: boolean | null;
+    invalidMessage: string | null;
+    validationEnabled: boolean;
+    showValidState: boolean;
 }
 
 /**
  * Non-reactive knobs shared across all input components.
  */
 export interface BaseInputProps extends ComponentProps {
-  name?: string;
-  autocomplete?: string;
-  inputMode?: string;
-  inputAttributes?: Record<string, any>;
-  onInput?: (cmp: BaseInput<any, any>, ev: Event) => void;
-  onChange?: (cmp: BaseInput<any, any>, ev: Event) => void;
-  onEnter?: (cmp: BaseInput<any, any>, ev: KeyboardEvent) => void;
+    name?: string;
+    autocomplete?: string;
+    inputMode?: string;
+    inputAttributes?: Record<string, any>;
+    onInput?: (cmp: BaseInput<any, any>, ev: Event) => void;
+    onChange?: (cmp: BaseInput<any, any>, ev: Event) => void;
+    onEnter?: (cmp: BaseInput<any, any>, ev: KeyboardEvent) => void;
+}
+
+type InputFocusSnapshot = {
+    selectionStart: number | null;
+    selectionEnd: number | null;
+    selectionDirection: 'forward' | 'backward' | 'none' | null;
+};
+
+export interface InputEventHandlers {
+    onInput: (ev: Event) => void;
+    onChange: (ev: Event) => void;
+    onKeyDown: (ev: KeyboardEvent) => void;
+}
+
+export interface InputControlContext extends InputEventHandlers {
+    id: string;
+    className: string;
+    type: string;
+    value: string;
+    placeholder: string | null;
+    readonly: boolean;
+    required: boolean;
+    ariaInvalid?: string;
+    ariaRequired?: string;
+    ariaDescribedBy?: string;
+}
+
+export interface InputViewContext {
+    hostClassAttr: string | null;
+    labelInline: Hole | null;
+    labelFloating: Hole | null;
+    helper: Hole | null;
+    control: InputControlContext;
+    mergedInputAttrs: Record<string, any>;
 }
 
 export abstract class BaseInput<
-  T,
-  ExtraState extends object = Record<string, never>
+    T,
+    ExtraState extends object = Record<string, never>
 > extends InteractiveComponent<BaseInputState<T> & ExtraState, BaseInputProps> {
-  protected _pendingInputAttrs: Record<string, any> = {};
-  protected _appliedInputAttrKeys = new Set<string>();
-  private _validationUnsub: (() => void) | null = null;
+    protected _pendingInputAttrs: Record<string, any> = {};
+    protected _appliedInputAttrKeys = new Set<string>();
+    private _validationUnsub: (() => void) | null = null;
 
-  protected applyIdToHost = false;
-
-  protected override initialState(): BaseInputState<T> & ExtraState {
-    return {
-      ...(super.initialState() as InteractiveComponentState),
-      value: null,
-      readonly: false,
-      required: false,
-      size: 'md',
-      placeholder: null,
-      label: null,
-      labelMode: 'none',
-      helperText: null,
-      touched: false,
-      valid: null,
-      invalidMessage: null,
-      validationEnabled: true,
-      ...(this.extraInitialState() as ExtraState)
-    } as BaseInputState<T> & ExtraState;
-  }
-
-  protected extraInitialState(): ExtraState {
-    return {} as ExtraState;
-  }
-
-  protected hostTag(): string { return 'div'; }
-
-  protected idPrefix(): string { return 'input'; }
-
-  protected abstract inputType(): string;
-
-  protected abstract toDom(v: T | null): string;
-  protected abstract fromDom(raw: string): T | null;
-
-  protected validate(_v: T | null): ValidationResult | null { return null; }
-
-  protected defaultHostClasses(): string[] {
-    const s = this.state();
-    return s.labelMode === 'floating' ? ['input-floating'] : [];
-  }
-
-  protected hostClassTokens(
-    ...additional: Array<string | false | null | undefined | Iterable<string | false | null | undefined>>
-  ): Set<string> {
-    return this.hostClasses(this.defaultHostClasses(), additional);
-  }
-
-  protected defaultInputClasses(): string[] {
-    const s = this.state();
-    const classes = ['input'];
-    if (s.size !== 'md') classes.push(`input-${s.size}`);
-    if (s.valid === true) classes.push('is-valid');
-    if (s.valid === false) classes.push('is-invalid');
-    return classes;
-  }
-
-  protected inputClass(additional: Iterable<string | false | null | undefined> = []): string {
-    const classes = new Set(this.defaultInputClasses());
-    for (const cls of additional) {
-      if (!cls) continue;
-      classes.add(cls);
-    }
-    return [...classes].join(' ');
-  }
-
-  protected helperContent(): string | null {
-    const s = this.state();
-    if (s.valid === false && s.invalidMessage) return s.invalidMessage;
-    return s.helperText ?? null;
-  }
-
-  protected buildInputAttributes(overrides: Record<string, any> = {}): Record<string, any> {
-    const attrsFromProps =
-      typeof this.props.inputAttributes === 'object' && this.props.inputAttributes
-        ? this.props.inputAttributes
-        : {};
-
-    const base = {
-      name: this.props.name,
-      autocomplete: this.props.autocomplete,
-      inputmode: this.props.inputMode
-    } satisfies Record<string, any>;
-
-    return {
-      ...base,
-      ...this.inputAttributes(),
-      ...overrides,
-      ...attrsFromProps
-    };
-  }
-
-  protected commitValue(next: T | null, options: { markTouched?: boolean; validate?: boolean } = {}): void {
-    const { markTouched = true, validate = true } = options;
-    const s = this.state();
-    s.value = next;
-    if (markTouched && !s.touched) s.touched = true;
-    if (validate) this.runValidation();
-  }
-
-  protected shouldSkipValidation(): boolean {
-    return this.state().validationEnabled === false;
-  }
-
-  protected override view() {
-    const s = this.state();
-    this.syncHostClasses(this.hostClassTokens());
-
-    const inputClass = this.inputClass();
-
-    const ariaInvalid = s.valid === false ? 'true' : undefined;
-    const ariaRequired = s.required ? 'true' : undefined;
-    const inputId = this.id();
-    const helperId = this.subId('help');
-    const helperContent = this.helperContent();
-    const ariaDescribedBy = helperContent ? helperId : undefined;
-
-    const mergedInputAttrs = this.buildInputAttributes();
-
-    this._pendingInputAttrs = mergedInputAttrs;
-
-    const onInput = (ev: Event) => {
-      const raw = (ev.target as HTMLInputElement).value ?? '';
-      const next = this.fromDom(raw);
-      this.commitValue(next);
-      this.props.onInput?.(this, ev);
-    };
-    const onChange = (ev: Event) => {
-      this.props.onChange?.(this, ev);
-    };
-    const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === 'Enter') {
-        this.props.onEnter?.(this, ev);
-      }
-    };
-
-    const labelInline = this.renderLabel('inline', inputId);
-    const labelFloating = this.renderLabel('floating', inputId);
-    const helper = this.renderHelper(helperId, helperContent);
-
-    return html`
-      ${labelInline}
-      <input
-        id=${inputId}
-        class=${inputClass}
-        type=${this.inputType()}
-        .value=${this.toDom(s.value)}
-        placeholder=${s.placeholder ?? ''}
-        ?readonly=${s.readonly}
-        ?required=${s.required}
-        aria-invalid=${ariaInvalid}
-        aria-required=${ariaRequired}
-        aria-describedby=${ariaDescribedBy}
-        oninput=${onInput}
-        onchange=${onChange}
-        onkeydown=${onKeyDown}
-      />
-      ${labelFloating}
-      ${helper}
-    `;
-  }
-
-  protected override doRender(): void {
-    super.doRender();
-    this.applyDynamicInputAttributes();
-  }
-
-  protected override afterMount(): void {
-    super.afterMount();
-    this._validationUnsub = this.state().on('validationEnabled', () => this.runValidation(), { immediate: true });
-  }
-
-  protected override beforeUnmount(): void {
-    this._validationUnsub?.();
-    this._validationUnsub = null;
-    super.beforeUnmount();
-  }
-
-  protected runValidation(): void {
-    const s = this.state();
-    if (this.shouldSkipValidation()) {
-      s.valid = null;
-      s.invalidMessage = null;
-      return;
+    protected override initialState(): BaseInputState<T> & ExtraState {
+        return {
+            ...(super.initialState() as InteractiveComponentState),
+            value: null,
+            readonly: false,
+            required: false,
+            size: 'md',
+            placeholder: null,
+            label: null,
+            labelMode: 'inline',
+            helperText: null,
+            touched: false,
+            valid: null,
+            invalidMessage: null,
+            validationEnabled: true,
+            showValidState: false,
+            ...(this.extraInitialState() as ExtraState)
+        } as BaseInputState<T> & ExtraState;
     }
 
-    const res = this.validate(s.value);
-    if (!res) {
-      if (!s.touched) s.valid = null;
-      return;
+    protected extraInitialState(): ExtraState {
+        return {} as ExtraState;
     }
 
-    s.valid = !!res.valid;
-    s.invalidMessage = res.valid ? null : (res.message ?? 'Invalid value');
-  }
+    protected abstract inputType(): string;
 
-  protected override applyDisabled(): void {
-    super.applyDisabled();
+    protected abstract toDom(v: T | null): string;
 
-    const input = this.el().querySelector('input');
-    if (!(input instanceof HTMLInputElement)) return;
+    protected abstract fromDom(raw: string): T | null;
 
-    const disabled = this._lastEffectiveDisabled;
-    input.toggleAttribute('disabled', disabled);
-    input.disabled = disabled;
-  }
-
-  protected inputAttributes(): Record<string, any> { return {}; }
-
-  private renderLabel(mode: 'inline' | 'floating', inputId: string) {
-    const s = this.state();
-    if (!s.label || s.labelMode !== mode) return null;
-    const className = mode === 'inline' ? 'label-text' : 'input-floating-label';
-    return html`<label class=${className} for=${inputId}>${s.label}</label>`;
-  }
-
-  private renderHelper(helperId: string, helperContent: string | null) {
-    if (!helperContent) return null;
-    return html`<div id=${helperId} class="mt-1 text-xs opacity-80">${helperContent}</div>`;
-  }
-
-  private applyDynamicInputAttributes(): void {
-    const input = this.el().querySelector('input');
-    if (!(input instanceof HTMLInputElement)) return;
-
-    const attrs = this._pendingInputAttrs ?? {};
-    const nextKeys = new Set<string>();
-
-    for (const [key, value] of Object.entries(attrs)) {
-      if (value === undefined || value === null || value === false) {
-        input.removeAttribute(key);
-        this._appliedInputAttrKeys.delete(key);
-        continue;
-      }
-
-      const normalized = typeof value === 'boolean' ? '' : String(value);
-      input.setAttribute(key, normalized);
-      nextKeys.add(key);
-      this._appliedInputAttrKeys.add(key);
+    protected validate(_v: T | null): ValidationResult | null {
+        return null;
     }
 
-    const currentKeys = Array.from(this._appliedInputAttrKeys);
-    for (const key of currentKeys) {
-      if (!nextKeys.has(key)) {
-        input.removeAttribute(key);
-        this._appliedInputAttrKeys.delete(key);
-      }
+    protected defaultHostClasses(): string[] {
+        const s = this.state();
+        const classes = ['w-full', 'min-w-0'];
+        if (s.labelMode === 'floating') classes.push('input-floating');
+        return classes;
     }
-  }
+
+    protected hostClassTokens(
+        ...additional: Array<string | false | null | undefined | Iterable<string | false | null | undefined>>
+    ): Set<string> {
+        const tokens = new Set<string>();
+        const push = (value: string | false | null | undefined) => {
+            if (!value) return;
+            const trimmed = value.trim();
+            if (trimmed) tokens.add(trimmed);
+        };
+        const process = (
+            value: string | false | null | undefined | Iterable<string | false | null | undefined>
+        ) => {
+            if (!value) return;
+            if (typeof value === 'string') {
+                push(value);
+                return;
+            }
+            if (typeof value === 'object' && value && Symbol.iterator in value) {
+                for (const item of value as Iterable<string | false | null | undefined>) {
+                    push(item);
+                }
+                return;
+            }
+            push(value as string | false | null | undefined);
+        };
+
+        for (const base of this.defaultHostClasses()) push(base);
+        for (const extra of additional) process(extra);
+        return tokens;
+    }
+
+    protected subId(part: string): string {
+        const suffix = part?.trim().length ? part.trim().replace(/\s+/g, '-') : 'sub';
+        return `${this.id()}__${suffix}`;
+    }
+
+    protected inputElement(): HTMLInputElement | null {
+        const host = this.el();
+        if (!host) return null;
+        const input = host.querySelector('input');
+        return input instanceof HTMLInputElement ? input : null;
+    }
+
+    protected defaultInputClasses(): string[] {
+        const s = this.state();
+        const classes = ['input'];
+        if (s.size !== 'md') classes.push(`input-${s.size}`);
+        const validationActive = s.validationEnabled !== false;
+        if (validationActive && s.showValidState && s.valid === true) {
+            classes.push('is-valid');
+        }
+        if (validationActive && s.valid === false) {
+            classes.push('is-invalid');
+        }
+        return classes;
+    }
+
+    protected inputClass(additional: Iterable<string | false | null | undefined> = []): string {
+        const classes = new Set(this.defaultInputClasses());
+        for (const cls of additional) {
+            if (!cls) continue;
+            classes.add(cls);
+        }
+        return [...classes].join(' ');
+    }
+
+    protected helperContent(): string | null {
+        const s = this.state();
+        if (s.valid === false && s.invalidMessage) return s.invalidMessage;
+        return s.helperText ?? null;
+    }
+
+    protected buildInputAttributes(overrides: Record<string, any> = {}): Record<string, any> {
+        const props = this.props();
+        const attrsFromProps =
+            typeof props.inputAttributes === 'object' && props.inputAttributes
+                ? props.inputAttributes
+                : {};
+
+        const base = {
+            name: props.name,
+            autocomplete: props.autocomplete,
+            inputmode: props.inputMode
+        } satisfies Record<string, any>;
+
+        return {
+            ...base,
+            ...this.inputAttributes(),
+            ...overrides,
+            ...attrsFromProps
+        };
+    }
+
+    protected commitValue(next: T | null, options: { markTouched?: boolean; validate?: boolean } = {}): void {
+        const {markTouched = true, validate = true} = options;
+        const s = this.state();
+        s.value = next;
+        if (markTouched && !s.touched) s.touched = true;
+        if (validate) this.runValidation();
+    }
+
+    protected shouldSkipValidation(): boolean {
+        return this.state().validationEnabled === false;
+    }
+
+    protected override view() {
+        const ctx = this.buildViewContext();
+        const content = this.renderContent(ctx);
+        return this.renderWrapper(content, ctx);
+    }
+
+    protected override doRender(): void {
+        const focusSnapshot = this.captureInputFocus();
+        super.doRender();
+        this.applyDynamicInputAttributes();
+        this.restoreInputFocus(focusSnapshot);
+    }
+
+    protected override afterMount(): void {
+        super.afterMount();
+        this._validationUnsub = this.state().on('validationEnabled', () => this.runValidation(), {immediate: true});
+    }
+
+    protected override beforeUnmount(): void {
+        this._validationUnsub?.();
+        this._validationUnsub = null;
+        super.beforeUnmount();
+    }
+
+    protected renderContent(ctx: InputViewContext): Hole {
+        return html`
+            ${ctx.labelInline}
+            ${this.renderControl(ctx.control)}
+            ${ctx.labelFloating}
+            ${ctx.helper}
+        `;
+    }
+
+    protected renderWrapper(content: Hole, ctx: InputViewContext): Hole {
+        return html`<div class=${ctx.hostClassAttr ?? null}>${content}</div>`;
+    }
+
+    protected renderControl(ctx: InputControlContext): Hole {
+        return html`
+            <input
+                id=${ctx.id}
+                class=${ctx.className}
+                type=${ctx.type}
+                .value=${ctx.value}
+                placeholder=${ctx.placeholder ?? ''}
+                ?readonly=${ctx.readonly}
+                ?required=${ctx.required}
+                aria-invalid=${ctx.ariaInvalid}
+                aria-required=${ctx.ariaRequired}
+                aria-describedby=${ctx.ariaDescribedBy}
+                oninput=${ctx.onInput}
+                onchange=${ctx.onChange}
+                onkeydown=${ctx.onKeyDown}
+            />
+        `;
+    }
+
+    protected controlEventHandlers(): InputEventHandlers {
+        return {
+            onInput: (ev: Event) => {
+                const raw = (ev.target as HTMLInputElement).value ?? '';
+                const next = this.fromDom(raw);
+                this.commitValue(next);
+                this.props().onInput?.(this, ev);
+            },
+            onChange: (ev: Event) => {
+                this.props().onChange?.(this, ev);
+            },
+            onKeyDown: (ev: KeyboardEvent) => {
+                if (ev.key === 'Enter') {
+                    this.props().onEnter?.(this, ev);
+                }
+            }
+        };
+    }
+
+    protected runValidation(): void {
+        const s = this.state();
+        if (this.shouldSkipValidation()) {
+            s.valid = null;
+            s.invalidMessage = null;
+            return;
+        }
+
+        const res = this.validate(s.value);
+        if (!res) {
+            if (!s.touched) s.valid = null;
+            return;
+        }
+
+        s.valid = !!res.valid;
+        s.invalidMessage = res.valid ? null : (res.message ?? 'Invalid value');
+    }
+
+    private buildViewContext(): InputViewContext {
+        const s = this.state();
+        const hostClasses = Array.from(this.hostClassTokens());
+        const hostClassAttr = hostClasses.length ? hostClasses.join(' ') : null;
+        const inputClass = this.inputClass();
+
+        const validationActive = s.validationEnabled !== false;
+        const ariaInvalid = validationActive && s.valid === false ? 'true' : undefined;
+        const ariaRequired = s.required ? 'true' : undefined;
+        const inputId = this.subId('input');
+        const helperId = this.subId('help');
+        const helperContent = this.helperContent();
+        const ariaDescribedBy = helperContent ? helperId : undefined;
+
+        const mergedInputAttrs = this.buildInputAttributes();
+        this._pendingInputAttrs = mergedInputAttrs;
+
+        const handlers = this.controlEventHandlers();
+
+        const control: InputControlContext = {
+            id: inputId,
+            className: inputClass,
+            type: this.inputType(),
+            value: this.toDom(s.value),
+            placeholder: s.placeholder ?? '',
+            readonly: s.readonly,
+            required: s.required,
+            ariaInvalid,
+            ariaRequired,
+            ariaDescribedBy,
+            ...handlers
+        };
+
+        return {
+            hostClassAttr,
+            labelInline: this.renderLabel('inline', inputId),
+            labelFloating: this.renderLabel('floating', inputId),
+            helper: this.renderHelper(helperId, helperContent),
+            control,
+            mergedInputAttrs
+        };
+    }
+
+    protected override applyDisabled(): void {
+        super.applyDisabled();
+
+        const input = this.inputElement();
+        if (!input) return;
+
+        const disabled = this._lastEffectiveDisabled;
+        input.toggleAttribute('disabled', disabled);
+        input.disabled = disabled;
+    }
+
+    protected inputAttributes(): Record<string, any> {
+        return {};
+    }
+
+    private renderLabel(mode: 'inline' | 'floating', inputId: string) {
+        const s = this.state();
+        if (!s.label || s.labelMode !== mode) return null;
+        const className = mode === 'inline' ? 'label-text' : 'input-floating-label';
+        return html`<label class=${className} for=${inputId}>${s.label}</label>`;
+    }
+
+    private renderHelper(helperId: string, helperContent: string | null) {
+        if (!helperContent) return null;
+        return html`<div id=${helperId} class="mt-1 text-xs opacity-80">${helperContent}</div>`;
+    }
+
+    private applyDynamicInputAttributes(): void {
+        const input = this.inputElement();
+        if (!input) return;
+
+        const attrs = this._pendingInputAttrs ?? {};
+        const nextKeys = new Set<string>();
+
+        for (const [key, value] of Object.entries(attrs)) {
+            if (value === undefined || value === null || value === false) {
+                input.removeAttribute(key);
+                this._appliedInputAttrKeys.delete(key);
+                continue;
+            }
+
+            const normalized = typeof value === 'boolean' ? '' : String(value);
+            input.setAttribute(key, normalized);
+            nextKeys.add(key);
+            this._appliedInputAttrKeys.add(key);
+        }
+
+        const currentKeys = Array.from(this._appliedInputAttrKeys);
+        for (const key of currentKeys) {
+            if (!nextKeys.has(key)) {
+                input.removeAttribute(key);
+                this._appliedInputAttrKeys.delete(key);
+            }
+        }
+    }
+
+    private captureInputFocus(): InputFocusSnapshot | null {
+        const input = this.inputElement();
+        if (!input) return null;
+        if (document.activeElement !== input) return null;
+        try {
+            return {
+                selectionStart: input.selectionStart,
+                selectionEnd: input.selectionEnd,
+                selectionDirection: input.selectionDirection
+            };
+        } catch {
+            return {selectionStart: null, selectionEnd: null, selectionDirection: null};
+        }
+    }
+
+    private restoreInputFocus(snapshot: InputFocusSnapshot | null): void {
+        if (!snapshot) return;
+        const input = this.inputElement();
+        if (!input) return;
+        input.focus();
+        try {
+            const start = snapshot.selectionStart ?? input.value.length;
+            const end = snapshot.selectionEnd ?? input.value.length;
+            const dir = snapshot.selectionDirection ?? undefined;
+            input.setSelectionRange(start, end, dir);
+        } catch {
+            // Some input types don't support selection; swallow errors.
+        }
+    }
 }

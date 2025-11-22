@@ -1,18 +1,18 @@
-import type { State } from '../../state/State';
-import type { Component } from '../Component';
+import type {State} from '../../state/State';
+import type {Component} from '../Component';
 
 /**
  * Context passed to Layout methods.
  */
 export interface LayoutApplyContext {
-  /** The DOM element for the Container itself. */
-  host: HTMLElement;
-  /** The Container's already-mounted children. */
-  children: Component[];
-  /** The Container state instance (reactive). */
-  state: State;
-  /** The Container props (non-reactive config). */
-  containerProps: Record<string, any>;
+    /** The DOM element for the Container itself. */
+    host: HTMLElement;
+    /** The Container's already-mounted children. */
+    children: Component[];
+    /** The Container state instance (reactive). */
+    state: State;
+    /** The Container props (non-reactive config). */
+    containerProps: Record<string, any>;
 }
 
 /**
@@ -20,9 +20,9 @@ export interface LayoutApplyContext {
  * Implementation detail: Layouts don't render HTML; they mutate classes/styles.
  */
 export interface Layout {
-  /** Apply layout rules to the container and each child. Called after render. */
-  apply(ctx: LayoutApplyContext): void;
+    /** Apply layout rules to the container and each child. Called after render. */
+    apply(ctx: LayoutApplyContext): void;
 
-  /** Optional cleanup when the container unmounts. */
-  dispose?(ctx: LayoutApplyContext): void;
+    /** Optional cleanup when the container unmounts. */
+    dispose?(ctx: LayoutApplyContext): void;
 }

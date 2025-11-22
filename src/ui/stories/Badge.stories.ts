@@ -1,9 +1,9 @@
 // src/ui/stories/Badge.stories.ts
-import type { Meta, StoryObj } from '@storybook/html';
-import { container } from '../Container';
-import { flexLayout } from '../layouts/FlexLayout';
-import { badge } from '../Badge';
-import { button } from '../Button'; // solo se vuoi confrontarli visivamente, opzionale
+import type {Meta, StoryObj} from '@storybook/html';
+import {container} from '../Container';
+import {flexLayout} from '../layouts/FlexLayout';
+import {badge} from '../Badge';
+import {button} from '../Button'; // solo se vuoi confrontarli visivamente, opzionale
 
 // Helper per montare un container nel div target controllato da Storybook.
 function renderBadgeRow(items: any[]) {
@@ -39,7 +39,7 @@ const meta: Meta = {
         return host;
     },
     argTypes: {
-        text: { control: 'text' },
+        text: {control: 'text'},
         color: {
             control: 'select',
             options: [
@@ -55,11 +55,11 @@ const meta: Meta = {
             control: 'select',
             options: ['xs', 'sm', 'md', 'lg', 'xl']
         },
-        pill: { control: 'boolean' },
-        dot: { control: 'boolean' },
-        iconLeft: { control: 'text' },
-        iconRight: { control: 'text' },
-        className: { control: 'text' },
+        pill: {control: 'boolean'},
+        dot: {control: 'boolean'},
+        iconLeft: {control: 'text'},
+        iconRight: {control: 'text'},
+        className: {control: 'text'},
     }
 };
 export default meta;
@@ -89,11 +89,11 @@ export const Playground: Story = {
 export const Colors: Story = {
     render: () => {
         return renderBadgeRow([
-            badge({ text: 'Default', color: 'default', variant: 'solid' }),
-            badge({ text: 'Primary', color: 'primary', variant: 'solid' }),
-            badge({ text: 'Success', color: 'success', variant: 'solid' }),
-            badge({ text: 'Warning', color: 'warning', variant: 'solid' }),
-            badge({ text: 'Error',   color: 'error',   variant: 'solid' })
+            badge({text: 'Default', color: 'default', variant: 'solid'}),
+            badge({text: 'Primary', color: 'primary', variant: 'solid'}),
+            badge({text: 'Success', color: 'success', variant: 'solid'}),
+            badge({text: 'Warning', color: 'warning', variant: 'solid'}),
+            badge({text: 'Error', color: 'error', variant: 'solid'})
         ]);
     }
 };
@@ -104,10 +104,10 @@ export const Colors: Story = {
 export const Variants: Story = {
     render: () => {
         return renderBadgeRow([
-            badge({ text: 'Solid',   color: 'primary', variant: 'solid' }),
-            badge({ text: 'Soft',    color: 'primary', variant: 'soft' }),
-            badge({ text: 'Outline', color: 'primary', variant: 'outline' }),
-            badge({ text: 'Ghost',   color: 'primary', variant: 'ghost' })
+            badge({text: 'Solid', color: 'primary', variant: 'solid'}),
+            badge({text: 'Soft', color: 'primary', variant: 'soft'}),
+            badge({text: 'Outline', color: 'primary', variant: 'outline'}),
+            badge({text: 'Ghost', color: 'primary', variant: 'ghost'})
         ]);
     }
 };
@@ -118,11 +118,11 @@ export const Variants: Story = {
 export const SizesAndPill: Story = {
     render: () => {
         return renderBadgeRow([
-            badge({ text: 'XS pill', size: 'xs', pill: true,  color: 'info', variant: 'soft' }),
-            badge({ text: 'SM',      size: 'sm', pill: false, color: 'info', variant: 'soft' }),
-            badge({ text: 'MD',      size: 'md', pill: false, color: 'info', variant: 'soft' }),
-            badge({ text: 'LG pill', size: 'lg', pill: true,  color: 'info', variant: 'soft' }),
-            badge({ text: 'XL pill', size: 'xl', pill: true,  color: 'info', variant: 'soft' })
+            badge({text: 'XS pill', size: 'xs', pill: true, color: 'info', variant: 'soft'}),
+            badge({text: 'SM', size: 'sm', pill: false, color: 'info', variant: 'soft'}),
+            badge({text: 'MD', size: 'md', pill: false, color: 'info', variant: 'soft'}),
+            badge({text: 'LG pill', size: 'lg', pill: true, color: 'info', variant: 'soft'}),
+            badge({text: 'XL pill', size: 'xl', pill: true, color: 'info', variant: 'soft'})
         ]);
     }
 };

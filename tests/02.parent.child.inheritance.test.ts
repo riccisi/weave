@@ -27,4 +27,20 @@ describe('Parent/Child inheritance (immutable schema)', () => {
         const child  = new State({}, parent);
         expect(() => { (child as any).b = 2; }).toThrow(/unknown property/i);
     });
+
+    it('Child prop dependency on parent prop value 1', () => {
+        const parent = new State({ title: "test" });
+        const child  = new State({ hidden: "{!title}"}, parent);
+        expect(child.hidden).toBe(false);
+        parent.title = null;
+        expect(child.hidden).toBe(true);
+    });
+
+    it('Child prop dependency on parent prop value 2', () => {
+        const parent = new State({ title: "test" });
+        const child  = new State({ hidden: (st: State) => !st.title}, parent);
+        expect(child.hidden).toBe(false);
+        parent.title = null;
+        expect(child.hidden).toBe(true);
+    });
 });

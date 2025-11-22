@@ -1,549 +1,574 @@
-import { render } from 'uhtml';
+// Component.ts
+import { Hole, html, render } from 'uhtml';
 import { State } from '../state/State';
 import { ReactiveRuntime } from '../state/ReactiveRuntime';
+import { scheduleFlyonInit } from './flyonBridge';
+import { ComponentDecorator } from './decorators/Decorator';
 
-/**
- * Reactive state shared by all Weave components.
- *
- * Subclasses extend this interface to expose their own reactive fields. The base keys control
- * visibility and interactivity guarantees that every component understands.
- */
+export type Bindable<T> = T | string | ((s: State) => T);
+export type InitialState<S> = { [K in keyof S]: Bindable<S[K]> };
+
+// ---- Slot anchoring ---------------------------------------------------------
+import { SlotManager, SLOT_TAG, SLOT_ATTR, SLOT_SELECTOR } from './SlotManager';
+
+/** Helper per dichiarare uno slot nel template uhtml */
+export function slot(name = 'items'): Hole {
+    const n = name ?? 'items';
+    // tag statico: niente interpolazione nel nome del tag, solo nel valore dell’attributo
+    return html`<weave-slot data-slot=${n} style="display: contents"></weave-slot>`;
+}
+
 export interface ComponentState {
-  /**
-   * When true, the component's host is visually/structurally hidden (typically display:none).
-   */
-  hidden: boolean;
-
-  /**
-   * When true, the component is hidden and becomes non-interactive for assistive technologies.
-   */
-  hiddenInert: boolean;
+    hidden: boolean;
+    hiddenInert: boolean;
 }
 
-/**
- * Base props shared by all Weave components.
- * These values are non-reactive configuration inputs provided at construction time.
- *
- * Layout overrides declared here let a child inform its parent layout about
- * custom flex/grid placement without requiring bespoke prop typing on each component.
- */
 export interface ComponentProps {
-  /** Optional DOM id assigned to the component's host element when it mounts. */
-  id?: string;
-
-  /** Extra CSS class names appended to the host element in addition to component-managed classes. */
-  className?: string;
-
-  /**
-   * Additional state fields provided by the user, merged into the component's State
-   * at construction time. This allows injecting app-specific reactive fields
-   * that the component schema did not predeclare.
-   */
-  state?: Record<string, any>;
-
-  // ---- Layout override hints (per-child) ----
-
-  /** Flexbox override for this child: e.g. "1 1 auto", "0 0 auto". */
-  flex?: string;
-
-  /** Flexbox align-self override for this child. */
-  alignSelf?: 'start' | 'center' | 'end' | 'stretch';
-
-  /** Grid placement override for this child (CSS grid-column). */
-  gridColumn?: string;
-
-  /** Grid placement override for this child (CSS grid-row). */
-  gridRow?: string;
-
-  /** Grid placement override for this child (CSS place-self). */
-  placeSelf?: string;
+    id?: string;
+    className?: string;
+    attrs?: Record<string, string | number | boolean | null | undefined>;
+    state?: Record<string, any>;
+    flex?: string;
+    alignSelf?: 'start' | 'center' | 'end' | 'stretch';
+    gridColumn?: string;
+    gridRow?: string;
+    placeSelf?: string;
+    decorators?: ReadonlyArray<ComponentDecorator<any, any>>;
 }
 
-/**
- * A type-safe configuration object for building a component instance.
- *
- * The caller can supply partial reactive state {@link S} as well as non-reactive props {@link P}
- * in a single object, receiving useful IDE auto-completion for both categories.
- */
 export type ComponentConfig<
-  S extends ComponentState = ComponentState,
-  P extends ComponentProps = ComponentProps
-> = Partial<S> & Partial<Omit<P, 'state'>> & {
-  state?: Record<string, any>;
-};
+    S extends ComponentState = ComponentState,
+    P extends ComponentProps = ComponentProps
+> = Partial<InitialState<S>> & Partial<Omit<P, 'state'>> & { state?: Record<string, any> };
 
-type ClassToken =
-  | string
-  | false
-  | null
-  | undefined
-  | Iterable<ClassToken>;
-
-/**
- * Base class for all Weave components.
- *
- * Responsibilities:
- * - Owns a stable DOM host element (see {@link hostTag}).
- * - Creates a reactive {@link State} composed of {@link initialState} plus user overrides.
- * - Provides lifecycle hooks ({@link beforeMount}, {@link afterMount}, {@link beforeUnmount}).
- * - Performs rendering via uhtml and coalesces render requests via {@link requestRender}.
- *
- * Generics:
- * S — reactive state interface for the component.
- * P — non-reactive props interface for the component.
- */
-/**
- * Base class for all Weave components.
- *
- * Responsibilities:
- * - Owns a stable DOM host element (see {@link hostTag}).
- * - Creates a reactive {@link State} composed of {@link initialState} plus user overrides.
- * - Separates configuration into static {@link _props} and reactive {@link _state} buckets.
- * - Provides lifecycle hooks ({@link beforeMount}, {@link afterMount}, {@link beforeUnmount}).
- * - Performs rendering via uhtml and coalesces render requests via {@link requestRender}.
- *
- * Generics:
- * S — reactive state interface for the component.
- * P — non-reactive props interface for the component.
- */
 export abstract class Component<
-  S extends ComponentState = ComponentState,
-  P extends ComponentProps = ComponentProps
+    S extends ComponentState = ComponentState,
+    P extends ComponentProps = ComponentProps
 > {
-  /** Reverse lookup: DOM host → component instance. */
-  private static _byHost = new WeakMap<HTMLElement, Component<any, any>>();
+    public readonly __weaveComponent = true;
+    private static _byHost = new WeakMap<HTMLElement, Component<any, any>>();
+    private static _idSeq = 0;
 
-  /** Global incremental id sequence shared by all components. */
-  private static _idSeq = 0;
+    protected _state!: State & S;
+    protected _host!: HTMLElement;
+    protected _container: HTMLElement | null = null;
+    protected _parentState?: State;
+    protected _mounted = false;
 
-  /** Reactive data backing {@link state}. Mutating it triggers renders. */
-  protected _state!: State & S;
-  /** DOM element hosting the component's template. */
-  protected _host!: HTMLElement;
-  /** True once {@link mount} has completed. */
-  protected _mounted = false;
-  /** Parent state inherited from the component tree, if any. */
-  protected _parentState?: State;
+    // Flag: la view ha “rivendicato” i children dell’host?
+    protected _renderedChildren = false;
 
-  /**
-   * Non-reactive props captured from the construction config.
-   * Includes layout overrides (flex/grid hints) consumed by parent containers.
-   */
-  protected _props: (P & Record<string, any>) = {} as P & Record<string, any>;
+    // Props e config
+    protected _props: P = {} as P;
+    private readonly _incomingConfig: ComponentConfig<S, P>;
+    private readonly _id: string;
 
-  protected get props(): P {
-    return this._props as P;
-  }
+    // Cache per performance
+    private _extraClassTokens: string[] = [];
+    private _staticAttrEntries: Array<[string, string]> = [];
 
-  protected set props(value: P) {
-    this._props = value as P & Record<string, any>;
-  }
+    // Render/reactivity
+    private _renderQueued = false;
+    private _depUnsubs: Array<() => void> = [];
+    protected _unsubs: Array<() => void> = [];
 
-  protected _unsubs: Array<() => void> = [];
-  protected _renderQueued = false;
+    // “Gestiti” dal framework (evita di toccare roba terza)
+    private _managedHostClasses: Set<string> = new Set();
+    private _managedHostAttrs: Set<string> = new Set();
+    private _managedOnClick = false;
 
-  /** Raw config object provided by the caller before splitting into state/props. */
-  private readonly _incomingConfig: ComponentConfig<S, P>;
+    /** Decorators risolti (immutabili) */
+    private _decorators: ReadonlyArray<ComponentDecorator<any, any>> = [];
 
-  /** Component-wide unique id (overridable via config.id). */
-  private readonly _id: string;
+    private _slotManager: SlotManager | null = null;
 
-  /** Whether the generated id should be applied to the host element. */
-  protected applyIdToHost = true;
+    private _savedDisplay: string | null | undefined = undefined;
 
-  /** Classes currently managed by the component (diffed on every render). */
-  private _managedHostClasses: Set<string> = new Set();
+    constructor(cfg: ComponentConfig<S, P> = {} as ComponentConfig<S, P>) {
+        this._incomingConfig = cfg;
+        this._id = this.resolveComponentId(cfg as Record<string, any>);
+    }
 
-  /** Normalized `className` tokens provided via props (never mutated). */
-  protected _propClassNames: string[] = [];
+    // nuovo hook: per default nessun valore speciale
+    protected visibleDisplay(): string | null {
+        return null;
+    }
 
-  constructor(config: ComponentConfig<S, P> = {} as ComponentConfig<S, P>) {
-    this._incomingConfig = config;
-    this._id = this.resolveComponentId(config as Record<string, any>);
-  }
+    // ---- lifecycle overridable ------------------------------------------------
 
-  /** Normalized list of classes provided via the `className` prop. */
-  protected propClassNames(): string[] {
-    return [...this._propClassNames];
-  }
+    protected initialState(): S {
+        return { hidden: false, hiddenInert: false } as S;
+    }
 
-  /** Utility to compose class tokens into a normalized Set. */
-  protected hostClasses(...tokens: ClassToken[]): Set<string> {
-    const out = new Set<string>();
-    const push = (token: ClassToken): void => {
-      if (!token) return;
-      if (typeof token === 'string') {
-        for (const part of token.split(/\s+/)) {
-          if (part) out.add(part);
+    /** Deve produrre SEMPRE un singolo elemento root. */
+    protected view(): Hole | null {
+        return null;
+    }
+
+    protected beforeMount(): void {/* no-op */}
+    protected afterMount(): void {/* no-op */}
+    protected beforeUnmount(): void {/* no-op */}
+
+    // ---- public API -----------------------------------------------------------
+
+    public state(): State & S { return this._state; }
+    public props(): P { return this._props; }
+    public el(): HTMLElement { return this._host; }
+    public id(): string { return this._id; }
+    public mounted(): boolean { return this._mounted; }
+
+    // Overload ergonomici
+    public mount(parent: Component<any, any>): this;
+    public mount(parent: Element | string, inheritFrom?: Component<any, any> | State): this;
+    public mount(
+        parent: Component<any, any> | Element | string,
+        inheritFrom?: Component<any, any> | State
+    ): this {
+        if (this._mounted) return this;
+
+        // 1) Risolvi container & parent state
+        this.resolveMountTargets(parent, inheritFrom);
+
+        // 2) Crea props/state (immutabili al mount) + decorators
+        this.preparePropsAndState();
+
+        // NEW: decorators beforeMount (no DOM garantito)
+        for (const d of this._decorators) {
+            d.beforeMount?.(this.buildDecoratorCtx(d));
         }
-        return;
-      }
-      if (typeof (token as any)[Symbol.iterator] === 'function') {
-        for (const inner of token as Iterable<ClassToken>) push(inner);
-      }
-    };
-    for (const token of tokens) push(token);
-    return out;
-  }
 
-  /** Apply host classes diffing only the ones managed by the component. */
-  protected syncHostClasses(
-    classes: Iterable<string>,
-    opts: { includePropClasses?: boolean } = {}
-  ): void {
-    const host = this._host;
-    if (!host) return;
+        this.beforeMount();
 
-    const includePropClasses = opts.includePropClasses ?? true;
-    const next = new Set<string>();
+        // 3) Primo render → adozione root + sync + append in container
+        this.doRender();
+        this.applyHidden();
 
-    for (const cls of classes) {
-      const normalized = cls?.trim();
-      if (!normalized) continue;
-      next.add(normalized);
+        // Listener base post-primo-render
+        this._unsubs.push(
+            this._state.on('hidden',      () => this.applyHidden(), { immediate: false }),
+            this._state.on('hiddenInert', () => this.applyHidden(), { immediate: false }),
+        );
+
+        this._mounted = true;
+        this.afterMount();
+
+        // NEW: decorators afterMount (DOM e slot disponibili)
+        for (const d of this._decorators) {
+            d.afterMount?.(this.buildDecoratorCtx(d));
+        }
+
+        // Flyon init: solo al mount
+        scheduleFlyonInit(this.flyonInitNames());
+
+        Component._byHost.set(this._host, this);
+        return this;
     }
 
-    if (includePropClasses) {
-      for (const cls of this._propClassNames) next.add(cls);
+    public unmount(): void {
+        if (!this._mounted) return;
+
+        this.beforeUnmount();
+
+        // NEW: decorators dispose prima di toccare il DOM/slot
+        for (const d of this._decorators) {
+            d.dispose?.(this.buildDecoratorCtx(d));
+        }
+
+        // Cancella subscriptions
+        for (const off of this._depUnsubs) off();
+        this._depUnsubs = [];
+        for (const off of this._unsubs) off();
+        this._unsubs = [];
+
+        // Stacca dal DOM
+        if (this._host?.parentElement) this._host.parentElement.removeChild(this._host);
+        Component._byHost.delete(this._host);
+
+        // Pulisci cache e riferimenti
+        this._mounted = false;
+        this._props = {} as P;
+        this._managedHostClasses.clear();
+        this._managedHostAttrs.clear();
+        this._managedOnClick = false;
+        this._extraClassTokens = [];
+        this._staticAttrEntries = [];
+        this._slotManager = null;
+        this._container = null;
+        this._parentState = undefined;
     }
 
-    for (const cls of this._managedHostClasses) {
-      if (!next.has(cls)) host.classList.remove(cls);
+    public static fromElement(el: Element | null): Component<any, any> | undefined {
+        return el ? Component._byHost.get(el as HTMLElement) : undefined;
     }
 
-    for (const cls of next) {
-      if (!this._managedHostClasses.has(cls)) host.classList.add(cls);
+    // ---- rendering/reactivity -------------------------------------------------
+
+    protected requestRender(): void {
+        if (this._renderQueued) return;
+        this._renderQueued = true;
+        queueMicrotask(() => {
+            this._renderQueued = false;
+            // Se siamo stati unmounted prima che il microtask giri, evita lavoro inutile
+            if (!this._mounted && !this._host) return;
+            this.doRender();
+            this.applyHidden();
+        });
     }
 
-    this._managedHostClasses = next;
-  }
+    protected doRender(): void {
+        // 1) view + decorators, con auto-tracking deps
+        const { value, deps } = this._state.track(() => this.applyDecorators(this.view()));
 
-  /**
-   * Returns the base reactive state for this component. Subclasses should spread
-   * {@link super.initialState} and then apply their own default values.
-   */
-  protected initialState(): S {
-    return {
-      hidden: false,
-      hiddenInert: false
-    } as S;
-  }
+        // 2) riallinea subscriptions ai deps effettivamente letti
+        this.updateDepSubscriptions(deps);
 
-  /** Produce the component template. Keep it pure; no side effects here. */
-  protected view(): any {
-    return null;
-  }
+        // 3) Materializza off-screen
+        const nextRoot = this.computeNextRoot(value);
 
-  /** Tag name for the host element. Override in leaf components (e.g., 'button'). */
-  protected hostTag(): string {
-    return 'div';
-  }
-
-  /** Lifecycle: before the initial render (state/props/host already created). */
-  protected beforeMount(): void {
-    /* no-op */
-  }
-
-  /** Lifecycle: after the first render has committed to the DOM. */
-  protected afterMount(): void {
-    /* no-op */
-  }
-
-  /** Lifecycle: right before removal from the DOM. */
-  protected beforeUnmount(): void {
-    /* no-op */
-  }
-
-  /** Access the reactive state (typed with Schema + built-ins). */
-  public state(): State & S {
-    return this._state;
-  }
-
-  /** Access the component host element. */
-  public el(): HTMLElement {
-    return this._host;
-  }
-
-  /** Access the generated component id. */
-  public id(): string {
-    return this._id;
-  }
-
-  /** Utility to derive a deterministic sub-id (e.g., `${id}-label`). */
-  protected subId(suffix: string): string {
-    return `${this._id}-${suffix}`;
-  }
-
-  /** Prefix for generated ids (override in subclasses). */
-  protected idPrefix(): string {
-    return 'cmp';
-  }
-
-  /** Whether the component has been mounted. */
-  public isMounted(): boolean {
-    return this._mounted;
-  }
-
-  /**
-   * Mount the component into a container, optionally inheriting a parent {@link State}.
-   * Creates the reactive state instance, the host element, lifecycle subscriptions and
-   * performs the initial render.
-   */
-  public mount(target: Element | string, parent?: Component<any, any> | State<any>): this {
-    if (this._mounted) return this;
-
-    const container =
-      typeof target === 'string'
-        ? (document.querySelector(target) as HTMLElement | null)
-        : (target as HTMLElement | null);
-    if (!container) throw new Error('Mount target not found');
-
-    if (parent instanceof Component) {
-      this._parentState = parent.state();
-    } else if (parent instanceof State) {
-      this._parentState = parent;
-    } else {
-      this._parentState = undefined;
+        if (!this._mounted || !this._host) {
+            this.adoptInitialRoot(nextRoot);
+        } else {
+            this.patchExistingRoot(nextRoot);
+        }
     }
 
-    const baseState = this.initialState();
-    const { stateOverrides, props, userState } = this.splitOptions(this._incomingConfig, baseState);
-    this.props = props;
-    this._propClassNames = Component.normalizeClassProp(this.props.className);
+    protected applyHidden(): void {
+        const s = this._state;
+        const host = this._host;
+        if (!host) return;
 
-    const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime;
-    const parentState = this._parentState;
-    const initial = {
-      ...baseState,
-      ...userState,
-      ...stateOverrides
-    };
-    this._state = new State(initial, parentState, runtime) as State & S;
+        if (s.hidden) {
+            // salva l’inline display corrente una sola volta
+            if (this._savedDisplay === undefined) {
+                this._savedDisplay = host.style.display || null;
+            }
+            host.style.display = 'none';
+            host.setAttribute('aria-hidden', 'true');
+            if (s.hiddenInert) host.setAttribute('inert', '');
+            else host.removeAttribute('inert');
+        } else {
+            // ripristina display visibile: preferisci quello del componente, altrimenti lo snapshot
+            const preferred = this.visibleDisplay();
+            if (preferred != null) {
+                host.style.display = preferred;
+            } else if (this._savedDisplay != null) {
+                host.style.display = this._savedDisplay;
+            } else {
+                // nessun valore specifico → rimuovi l’inline, lascia lavorare le classi CSS
+                host.style.removeProperty('display');
+            }
+            this._savedDisplay = undefined;
 
-    this._host = document.createElement(this.hostTag());
-    const propClassString = this._propClassNames.join(' ');
-    if (propClassString) {
-      this._host.className = propClassString;
-    }
-    if (this.props.id) {
-      this._host.id = this.props.id;
-    } else if (this.applyIdToHost) {
-      this._host.id = this._id;
-    }
-
-    this.beforeMount();
-
-    const watchedKeys = new Set<string>(Object.keys(initial ?? {}));
-
-    for (const key of watchedKeys) {
-      this._unsubs.push(
-        this._state.on(
-          key,
-          () => this.onStateKeyChange(key as keyof S),
-          { immediate: false }
-        )
-      );
+            host.removeAttribute('aria-hidden');
+            host.removeAttribute('inert');
+        }
     }
 
-    container.appendChild(this._host);
-    this.doRender();
-    this.applyHidden();
+    // ---- flyon bridge ---------------------------------------------------------
 
-    this._mounted = true;
-
-    this.afterMount();
-
-    Component._byHost.set(this._host, this);
-    return this;
-  }
-
-  /**
-   * Unmount the component, removing listeners and detaching the host from the DOM.
-   */
-  public unmount(): void {
-    if (!this._mounted) return;
-
-    this.beforeUnmount();
-
-    for (const off of this._unsubs) off();
-    this._unsubs = [];
-
-    if (this._host?.parentElement) {
-      this._host.parentElement.removeChild(this._host);
-    }
-    Component._byHost.delete(this._host);
-
-    this._mounted = false;
-    this._managedHostClasses = new Set();
-    this._propClassNames = [];
-    this.props = {} as P;
-  }
-
-  /** Find a component instance from a DOM node, if any. */
-  public static fromElement(el: Element | null): Component<any, any> | undefined {
-    return el ? Component._byHost.get(el as HTMLElement) : undefined;
-  }
-
-  /**
-   * Animate removal (using Tailwind/Flyon classes already present in CSS build)
-   * and then unmount the component.
-   */
-  public requestRemove(opts: { timeoutMs?: number } = {}): void {
-    const host = this._host;
-    if (!host) return;
-
-    host.classList.add('removing');
-    host.classList.add('transition', 'duration-300', 'ease-in-out');
-
-    const done = () => this.unmount();
-
-    const total = this.getTransitionTotalMs(host);
-    const safety = opts.timeoutMs ?? 350;
-    let fired = false;
-
-    const onEnd = (ev: Event) => {
-      if (ev.target === host) {
-        fired = true;
-        host.removeEventListener('transitionend', onEnd);
-        done();
-      }
-    };
-    host.addEventListener('transitionend', onEnd);
-    setTimeout(() => {
-      if (!fired) {
-        host.removeEventListener('transitionend', onEnd);
-        done();
-      }
-    }, Math.max(total, safety));
-  }
-
-  /** Schedule a microtask re-render; coalesces multiple requests in the same tick. */
-  protected requestRender(): void {
-    if (this._renderQueued) return;
-    this._renderQueued = true;
-    queueMicrotask(() => {
-      this._renderQueued = false;
-      this.doRender();
-      this.applyHidden();
-    });
-  }
-
-  /** Perform the actual render into the host using uhtml. */
-  protected doRender(): void {
-    render(this._host, this.view());
-  }
-
-  /** Apply visibility on the host without triggering a render. */
-  protected applyHidden(): void {
-    const s = this.state();
-    const host = this._host;
-    if (!host) return;
-
-    if (s.hidden) {
-      host.style.display = 'none';
-      host.setAttribute('aria-hidden', 'true');
-      if (s.hiddenInert) {
-        host.setAttribute('inert', '');
-      } else {
-        host.removeAttribute('inert');
-      }
-    } else {
-      host.style.display = '';
-      host.removeAttribute('aria-hidden');
-      host.removeAttribute('inert');
-    }
-  }
-
-  /**
-   * Split the caller-provided configuration into reactive state overrides and plain props.
-   */
-  protected onStateKeyChange(key: keyof S): void {
-    if (key === 'hidden' || key === 'hiddenInert') {
-      this.applyHidden();
-    } else {
-      this.requestRender();
-    }
-  }
-
-  /**
-   * Split the caller-provided configuration into reactive state overrides, a custom user state property bag
-   * and plain props. Keys present in {@link baseState} become typed overrides, while any other `state`
-   * entries are merged verbatim to extend the runtime {@link State}.
-   */
-  protected splitOptions(
-    incoming: ComponentConfig<S, P>,
-    baseState: S
-  ): {
-    stateOverrides: Partial<S>;
-    userState: Record<string, any>;
-    props: P;
-  } {
-    const stateKeys = new Set(Object.keys(baseState ?? {}));
-
-    const stateOverrides: Record<string, any> = {};
-    const propsResult: Record<string, any> = {};
-    const userStateResult: Record<string, any> = {};
-
-    const userCustomState = (incoming as any)?.state;
-    if (userCustomState && typeof userCustomState === 'object') {
-      for (const [key, value] of Object.entries(userCustomState)) {
-        userStateResult[key] = value;
-      }
+    protected flyonInitNames(): string[] | undefined {
+        const ctor = this.constructor as any;
+        return ctor.flyonInit as string[] | undefined;
     }
 
-    for (const [key, value] of Object.entries(incoming ?? {})) {
-      if (key === 'state') continue;
-      if (stateKeys.has(key)) stateOverrides[key] = value;
-      else propsResult[key] = value;
+    // ---- mount helpers --------------------------------------------------------
+
+    private resolveMountTargets(
+        parent: Component<any, any> | Element | string,
+        inheritFrom?: Component<any, any> | State
+    ): void {
+        if (parent instanceof Component) {
+            this._parentState = parent.state();
+            this._container   = parent.el();
+        } else {
+            this._container = (typeof parent === 'string'
+                ? document.querySelector(parent)
+                : parent) as HTMLElement | null;
+
+            if (!this._container) throw new Error('Mount target non trovato');
+
+            this._parentState = inheritFrom
+                ? (inheritFrom instanceof Component ? inheritFrom.state() : inheritFrom)
+                : undefined;
+        }
     }
 
-    return {
-      stateOverrides: stateOverrides as Partial<S>,
-      userState: userStateResult,
-      props: propsResult as P
-    };
-  }
+    private preparePropsAndState(): void {
+        const base = this.initialState();
+        const { stateOverrides, props, userState } = this.splitOptions(this._incomingConfig, base);
+        this._props = props;
 
-  /** Resolve the base component id, allowing overrides via `config.id`. */
-  protected resolveComponentId(config: Record<string, any>): string {
-    const incomingId = typeof config.id === 'string' ? config.id.trim() : '';
-    if (incomingId) return incomingId;
-    return Component.generateId(this.idPrefix());
-  }
+        // Cache class tokens & static attrs: props sono immutabili post-mount
+        this._extraClassTokens = Component.tokens(this._props.className);
+        this._staticAttrEntries = this.normalizeStaticAttrs(this._props.attrs);
 
-  private static generateId(prefix: string): string {
-    const safe = prefix && prefix.trim().length ? prefix.trim() : 'cmp';
-    const seq = ++Component._idSeq;
-    return `${safe}-${seq}`;
-  }
+        // Decorators
+        this._decorators = this.resolveDecoratorsOnce(this._props.decorators);
+        const decoBag = this.buildDecoratorInitialBag(this._decorators);
 
-  private static normalizeClassProp(value: unknown): string[] {
-    if (typeof value !== 'string') return [];
-    return value
-      .split(/\s+/)
-      .map((cls) => cls.trim())
-      .filter((cls) => cls.length > 0);
-  }
+        const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime;
+        const initial = { ...base, ...decoBag, ...userState, ...stateOverrides };
+        this._state = new State(initial, this._parentState, runtime) as State & S;
+    }
 
-  private getTransitionTotalMs(el: HTMLElement): number {
-    const cs = getComputedStyle(el);
-    const dur = cs.transitionDuration
-      .split(',')
-      .map((s) => s.trim())
-      .map(this.parseTime);
-    const del = cs.transitionDelay
-      .split(',')
-      .map((s) => s.trim())
-      .map(this.parseTime);
-    const pairs = dur.map((d, i) => d + (del[i] ?? 0));
-    return pairs.length ? Math.max(...pairs) : 0;
-  }
+    // ---- decorator helpers ----------------------------------------------------
 
-  private parseTime(s: string): number {
-    return s.endsWith('ms')
-      ? +s.slice(0, -2)
-      : s.endsWith('s')
-        ? +s.slice(0, -1) * 1000
-        : 0;
-  }
+   private applyDecorators(hole: Hole | null): Hole {
+        let res = hole ?? html``;
+        for (const d of this._decorators) {
+            const ctx = this.buildDecoratorCtx(d);
+            res = d.wrap(res, ctx);
+            d.update?.(ctx);
+        }
+        return res;
+   }
+
+    private resolveDecoratorsOnce(list?: ReadonlyArray<ComponentDecorator<any, any>>): ReadonlyArray<ComponentDecorator<any, any>> {
+        const arr = Array.isArray(list) ? [...list] : [];
+        const seen = new Set<string>();
+        for (const d of arr) {
+            if (!d || !d.ns) throw new Error('Decorator senza ns.');
+            if (seen.has(d.ns)) throw new Error(`Decorator duplicato per ns: "${d.ns}"`);
+            seen.add(d.ns);
+            // hardening: defaults() deve restituire un POJO o undefined
+            const def = d.defaults?.();
+            if (def && (typeof def !== 'object' || Array.isArray(def))) {
+                throw new Error(`Decorator "${d.ns}" defaults() deve restituire un oggetto semplice.`);
+            }
+        }
+        arr.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+        return arr;
+    }
+
+    private buildDecoratorInitialBag(decorators: ReadonlyArray<ComponentDecorator<any, any>>): Record<string, any> {
+        const bag: Record<string, any> = Object.create(null);
+        for (const d of decorators) bag[d.ns] = { ...(d.defaults?.() ?? {}) };
+        return bag;
+    }
+
+    private buildDecoratorCtx(d: ComponentDecorator<any, any>) {
+        return {
+            cmp: this,
+            state: this._state,
+            deco: (this._state as any)[d.ns],
+            ns: d.ns,
+            props: d.props?.(),
+        };
+    }
+
+    // ---- render helpers -------------------------------------------------------
+
+    private updateDepSubscriptions(deps: Set<string>): void {
+        for (const off of this._depUnsubs) off();
+        this._depUnsubs = [];
+        for (const k of deps) {
+            if (k === 'hidden' || k === 'hiddenInert') continue;
+            this._depUnsubs.push(this._state.on(k, () => this.requestRender(), { immediate: false }));
+        }
+    }
+
+    private computeNextRoot(v: Hole): HTMLElement {
+        const staging = document.createElement('div');
+        render(staging, v);
+        return this.ensureSingleElementRoot(staging);
+    }
+
+    private adoptInitialRoot(nextRoot: HTMLElement): void {
+        this._host = nextRoot;
+        this._slotManager = new SlotManager(this._host);
+
+        // id stabile
+        this._host.id = (this._props.id && this._props.id.trim()) ? this._props.id : this._id;
+
+        // flag children gestiti
+        this._renderedChildren = this._host.childNodes.length > 0;
+
+        // Registra gli slot presenti nel template iniziale
+        this.collectSlotsFromHost();
+
+        // Sync iniziale class/attr dal root corrente
+        this.syncHostFrom(this._host);
+
+        // Mount nel container
+        this._container!.appendChild(this._host);
+    }
+
+    private patchExistingRoot(nextRoot: HTMLElement): void {
+        // Il tag root NON deve cambiare dopo il mount
+        if (nextRoot.tagName !== this._host.tagName) {
+            throw new Error(
+                `${this.constructor.name}.view()/decorator: il tag root è cambiato `
+                + `(prima ${this._host.tagName}, ora ${nextRoot.tagName})`
+            );
+        }
+        this.syncHostFrom(nextRoot);
+        this.syncChildrenFrom(nextRoot);
+    }
+
+    // ---- utils ----------------------------------------------------------------
+
+    protected splitOptions(
+        incoming: ComponentConfig<S, P>,
+        baseState: S
+    ): { stateOverrides: Partial<S>; userState: Record<string, any>; props: P } {
+        const stateKeys = new Set(Object.keys(baseState ?? {}));
+        const stateOverrides: Record<string, any> = {};
+        const propsResult: Record<string, any> = {};
+        const userStateResult: Record<string, any> = {};
+
+        const custom = (incoming as any)?.state;
+        if (custom && typeof custom === 'object') {
+            for (const [k, v] of Object.entries(custom)) userStateResult[k] = v;
+        }
+        for (const [k, v] of Object.entries(incoming ?? {})) {
+            if (k === 'state') continue;
+            if (stateKeys.has(k)) stateOverrides[k] = v;
+            else propsResult[k] = v;
+        }
+        return {
+            stateOverrides: stateOverrides as Partial<S>,
+            userState: userStateResult,
+            props: propsResult as P
+        };
+    }
+
+    protected resolveComponentId(config: Record<string, any>): string {
+        const incomingId = typeof config.id === 'string' ? config.id.trim() : '';
+        if (incomingId) return incomingId;
+        const seq = ++Component._idSeq;
+        return `cmp-${seq}`;
+    }
+
+    // ---- slot helpers ---------------------------------------------------------
+
+    private isSlotElement(el: Element | null | undefined): el is HTMLElement {
+        return this._slotManager?.isSlot(el) ?? false;
+    }
+
+    private collectSlotsFromHost(): Map<string, HTMLElement> {
+        if (!this._slotManager) this._slotManager = new SlotManager(this._host);
+        return this._slotManager.collectFromHost();
+    }
+
+    private createAndRegisterSlot(name: string, attachToHost = true): HTMLElement {
+        if (!this._slotManager) this._slotManager = new SlotManager(this._host);
+        const el = this._slotManager.ensure(name, attachToHost);
+        return el;
+    }
+
+    /** Restituisce l’anchor element dello slot richiesto (crea se mancante). */
+    public slotEl(name = 'items'): HTMLElement {
+        if (!this._slotManager) this._slotManager = new SlotManager(this._host);
+        // ensure attach to host: true solo quando host esiste
+        return this._slotManager.ensure(name, true);
+    }
+
+    // ---- DOM helpers ----------------------------------------------------------
+
+
+    private ensureSingleElementRoot(staging: HTMLElement): HTMLElement {
+        // caso ideale: già un solo elemento
+        const only = staging.firstElementChild as HTMLElement | null;
+        if (only && staging.childElementCount === 1) {
+            return only;
+        }
+
+        // fallback: crea wrapper <div style="display: contents"> e sposta TUTTI i child nodes
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'contents';
+        while (staging.firstChild) wrapper.appendChild(staging.firstChild);
+        return wrapper;
+    }
+
+    private static tokens(str?: string): string[] {
+        if (!str) return [];
+        return str.split(/\s+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    private normalizeStaticAttrs(attrs?: Record<string, any>): Array<[string, string]> {
+        if (!attrs) return [];
+        const out: Array<[string, string]> = [];
+        for (const [k, v] of Object.entries(attrs)) {
+            if (v === false || v == null) continue;
+            out.push([k, v === true ? '' : String(v)]);
+        }
+        return out;
+    }
+
+    private syncHostFrom(next: HTMLElement): void {
+        const host = this._host;
+
+        // CLASSI (gestite): union(view.classList, props.className pre-tokenizzata)
+        const nextClasses = new Set<string>(next.classList ? Array.from(next.classList) : []);
+        for (const extra of this._extraClassTokens) nextClasses.add(extra);
+
+        // rimuovi SOLO quelle gestite in precedenza ma non più presenti
+        for (const cls of this._managedHostClasses) {
+            if (!nextClasses.has(cls)) host.classList.remove(cls);
+        }
+        // aggiungi nuove
+        for (const cls of nextClasses) {
+            if (!host.classList.contains(cls)) host.classList.add(cls);
+        }
+        this._managedHostClasses = nextClasses;
+
+        // ATTRIBUTI (gestiti): copia tutti da next (tranne id/class) + props.attrs statiche (cached)
+        const nextAttrs = new Map<string, string | null>();
+        for (const name of next.getAttributeNames()) {
+            if (name === 'id' || name === 'class') continue;
+            nextAttrs.set(name, next.getAttribute(name));
+        }
+        for (const [k, v] of this._staticAttrEntries) nextAttrs.set(k, v);
+
+        // rimuovi SOLO quelli che gestivamo ma non esistono più
+        for (const prev of this._managedHostAttrs) {
+            if (!nextAttrs.has(prev)) host.removeAttribute(prev);
+        }
+        // applica/aggiorna
+        for (const [k, v] of nextAttrs) {
+            if (v === null) host.removeAttribute(k);
+            else host.setAttribute(k, v);
+        }
+        this._managedHostAttrs = new Set(nextAttrs.keys());
+
+        // EVENTI base (gestiti): onclick property
+        if ('onclick' in next) {
+            const handler = (next as any).onclick ?? null;
+            (host as any).onclick = handler;
+            this._managedOnClick = true;
+        } else if (this._managedOnClick) {
+            (host as any).onclick = null;
+            this._managedOnClick = false;
+        }
+    }
+
+    private syncChildrenFrom(next: HTMLElement): void {
+        const nextHasKids  = next.childNodes.length > 0;
+        const hostHasKids  = this._host.childNodes.length > 0;
+        const nextHasSlots = Array.from(next.children).some(el => this.isSlotElement(el));
+
+        // --- AUTO-CLAIM GATES ----------------------------------------------------
+        if (!this._renderedChildren) {
+            if (!nextHasKids) return; // preserva figli montati esternamente
+            if (hostHasKids && !nextHasSlots) return; // evita clobber inatteso
+            if (hostHasKids && nextHasSlots) {
+                const anyNonSlot = Array.from(this._host.childNodes).some(
+                    n => n.nodeType === Node.ELEMENT_NODE && !this.isSlotElement(n as Element)
+                );
+                if (anyNonSlot) return;
+            }
+        }
+
+        // --- SLOT-AWARE RECONCILE ------------------------------------------------
+        const { content } = this.reuseSlotsDeep(next);
+
+        this._host.replaceChildren(content);
+        if (nextHasKids) this._renderedChildren = true;
+    }
+
+    /** Sostituisce *qualsiasi* elemento slot (anche annidato) con l'anchor riusato. */
+    private reuseSlotsDeep(root: HTMLElement): { anchors: Map<string, HTMLElement>; content: DocumentFragment } {
+        if (!this._slotManager) this._slotManager = new SlotManager(this._host);
+        return this._slotManager.reuseSlotsFrom(root);
+    }
 }

@@ -4,7 +4,7 @@ import {ListAttribute} from './ListAttribute';
 import {MapAttribute} from './MapAttribute';
 import {IndexAttribute} from './IndexAttribute';
 import {MapKeyAttribute} from './MapKeyAttribute';
-import {tokenize, type Token} from './PathTokenizer';
+import {type Token, tokenize} from './PathTokenizer';
 
 export type FinalKind = 'prop' | 'index' | 'mapKey';
 

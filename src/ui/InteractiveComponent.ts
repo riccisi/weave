@@ -1,110 +1,107 @@
-import { Component, type ComponentState, type ComponentProps } from './Component';
+// src/ui/InteractiveComponent.ts
+import { Component, type ComponentProps, type ComponentState } from './Component';
 
 /**
- * Reactive state shared by interactive components.
- * Adds disabled-related switches on top of {@link ComponentState}.
+ * Stato reattivo per componenti interattivi.
  */
 export interface InteractiveComponentState extends ComponentState {
-  /** When true, the component should appear disabled and not respond to input. */
-  disabled: boolean;
-  /**
-   * When true together with {@link disabled}, attempt to remove the component from the focus
-   * and accessibility tree (via `inert`, `aria-disabled`, etc.).
-   */
-  disabledInert: boolean;
+    /** Disabilita il componente (visivamente e come input). */
+    disabled: boolean;
+    /**
+     * Se true insieme a disabled, cerca di rimuovere il componente
+     * dal focus tree / a11y (es. inert, aria-disabled).
+     */
+    disabledInert: boolean;
 }
 
 /**
- * Base class for interactive components (things that can be "disabled").
- *
- * @typeParam S - Reactive state contract. Must include {@link InteractiveComponentState}.
- * @typeParam P - Non-reactive props contract.
+ * Base class per componenti “disabilitabili”.
+ * - Non muta mai state().disabled quando forzato dal parent.
+ * - Applica attributi ARIA/inert in modo imperativo (no re-render).
  */
 export abstract class InteractiveComponent<
-  S extends InteractiveComponentState = InteractiveComponentState,
-  P extends ComponentProps = ComponentProps
+    S extends InteractiveComponentState = InteractiveComponentState,
+    P extends ComponentProps = ComponentProps
 > extends Component<S, P> {
-  /** Tracks whether an ancestor container is forcing this component disabled. */
-  private _forcedDisabledFromAncestor = false;
 
-  /**
-   * Last effective computed disabled (parent force OR local state.disabled).
-   * Exposed to subclasses (e.g. Button) to style/attr the host accordingly.
-   */
-  protected _lastEffectiveDisabled = false;
+    /** Stato forzato dall’antenato (Container, ecc.). */
+    private _forcedDisabledFromAncestor = false;
 
-  /**
-   * initialState() here merges Component.initialState() with disabled flags.
-   * Subclasses MUST call super.initialState() and then add their own defaults.
-   */
-  protected override initialState(): S {
-    return {
-      ...(super.initialState() as ComponentState),
-      disabled: false,
-      disabledInert: false
-    } as S;
-  }
+    /** Ultimo valore di disabled effettivo (forzato || locale). */
+    protected _lastEffectiveDisabled = false;
 
-  /**
-   * Called by parent containers to force-disable (or release) this component.
-   * Does NOT mutate the component's own state().disabled.
-   */
-  public setDisabledFromParent(flag: boolean): void {
-    this._forcedDisabledFromAncestor = flag;
-    this.applyDisabled();
-  }
-
-  /**
-   * Computes the effective disabled state and applies generic ARIA/inert attributes.
-   * Subclasses (like Button) will override this, call super.applyDisabled(),
-   * and then also update visual classes / native attributes such as [disabled].
-   */
-  protected applyDisabled(): void {
-    const host = this.el();
-    if (!host) return;
-
-    const st = this.state();
-    const effective = this._forcedDisabledFromAncestor || st.disabled;
-    this._lastEffectiveDisabled = effective;
-
-    if (effective) {
-      host.setAttribute('aria-disabled', 'true');
-      if (st.disabledInert) host.setAttribute('inert', '');
-    } else {
-      host.removeAttribute('aria-disabled');
-      host.removeAttribute('inert');
+    /** Merge dei default di Component con i flag di disabled. */
+    protected override initialState(): S {
+        return {
+            ...(super.initialState() as ComponentState),
+            disabled: false,
+            disabledInert: false,
+        } as S;
     }
-  }
 
-  /**
-   * Lifecycle hook ensuring disabled attributes are applied before the first render.
-   * Interactive components call {@link applyDisabled} once the host is created so that
-   * initial state/parent constraints are reflected immediately.
-   */
-  protected override beforeMount(): void {
-    super.beforeMount();
-    this.applyDisabled();
-  }
-
-  protected override onStateKeyChange(key: keyof S): void {
-    super.onStateKeyChange(key);
-    if (key === 'disabled' || key === 'disabledInert') {
-      this.applyDisabled();
+    /**
+     * Forza il disabled (senza toccare state().disabled) e applica gli attributi.
+     */
+    public setDisabledFromParent(flag: boolean): void {
+        this._forcedDisabledFromAncestor = flag;
+        this.applyDisabled();
     }
-  }
 
-  /**
-   * requestRender() override:
-   * same coalescing logic, but after rendering we must apply both visibility and disabled state.
-   */
-  protected override requestRender(): void {
-    if (this._renderQueued) return;
-    this._renderQueued = true;
-    queueMicrotask(() => {
-      this._renderQueued = false;
-      this.doRender();
-      this.applyHidden();
-      this.applyDisabled();
-    });
-  }
+    /**
+     * Calcola il disabled effettivo e sincronizza attributi ARIA/inert sull’host.
+     * Le subclass (es. Button) possono estendere per aggiungere classi/attributi nativi.
+     */
+    protected applyDisabled(): void {
+        const host = this.el();
+        if (!host) return;
+
+        const st = this.state();
+        const effective = this._forcedDisabledFromAncestor || !!st.disabled;
+        this._lastEffectiveDisabled = effective;
+
+        if (effective) {
+            host.setAttribute('aria-disabled', 'true');
+            if (st.disabledInert) host.setAttribute('inert', '');
+        } else {
+            host.removeAttribute('aria-disabled');
+            host.removeAttribute('inert');
+        }
+    }
+
+    /** Getter comodo: disabled effettivo (forzato || locale). */
+    public get disabled(): boolean {
+        return this._forcedDisabledFromAncestor || !!this.state().disabled;
+    }
+
+    /**
+     * Installa i watcher su disabled/disabledInert (senza re-render),
+     * e applica lo stato subito per riflettere eventuali vincoli del parent.
+     * Nota: in questo punto l’host è già stato adottato (nuova architettura).
+     */
+    protected override beforeMount(): void {
+        super.beforeMount();
+
+        // reazione imperativa ai soli cambi “disabled*”
+        this._unsubs.push(
+            this.state().on('disabled', () => this.applyDisabled(), { immediate: false }),
+            this.state().on('disabledInert', () => this.applyDisabled(), { immediate: false }),
+        );
+
+        // applica una prima volta lo stato disabilitato (se ereditato/locale)
+        this.applyDisabled();
+    }
+
+    /**
+     * Coalesca i render e, dopo il render, riallinea anche hidden + disabled.
+     */
+    protected override requestRender(): void {
+        if ((this as any)._renderQueued) return;
+        (this as any)._renderQueued = true;
+        queueMicrotask(() => {
+            (this as any)._renderQueued = false;
+            this.doRender();
+            this.applyHidden();
+            this.applyDisabled();
+        });
+    }
 }

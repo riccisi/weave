@@ -1,8 +1,10 @@
 @import "tailwindcss";
-@import "../node_modules/flyonui/variants.css"; /* Require only if you want to use FlyonUI JS component */
+@import "../node_modules/flyonui/variants.css";
+@import "./icon-safelist.css"; /* safelist Iconify tabler classes */
 
 @plugin "flyonui" {
     themes: light --default, black --prefersdark, gourmet, claude, black;
 }
 @plugin "@iconify/tailwind4";
 @source "../node_modules/flyonui/dist/index.js"; /* Require only if you want to use FlyonUI JS component */
+@source "./icon-safelist.html";

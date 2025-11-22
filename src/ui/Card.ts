@@ -1,236 +1,263 @@
 import { html } from 'uhtml';
 import {
-    Container,
-    type ContainerState,
-    type ContainerProps,
-    container,                // factory: (cfg) => new Container(cfg)
-} from './Container';
-import { Component, type ComponentConfig } from './Component';
+    Component,
+    slot,
+    type ComponentConfig,
+    type ComponentProps,
+    type ComponentState,
+} from './Component';
+import { content, Content, type ContentConfig } from './Content';
 import type { Layout } from './layouts/Layout';
-import {markup} from "./Markup";
-import {flexLayout} from "./layouts/FlexLayout";
+import { button, type ButtonProps, type ButtonState } from './Button';
+import { alert as alertFactory, Alert, type AlertProps, type AlertState } from './Alert';
 
-/** Stato reattivo della Card. Estende ContainerState (hidden, disabled, ecc.) */
-export interface CardState extends ContainerState {
+type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+
+/** Stato visuale della Card */
+export interface CardState extends ComponentState {
     title: string | null;
-    description: string | null;
-
     imageSrc: string | null;
-    imageAlt: string;
-    imagePlacement: 'top' | 'side'; // side -> aggiunge "card-side"
+    imageAlt: string | null;
+    imagePlacement: 'top' | 'bottom';
+    imageFull: boolean;
     compact: boolean;
     glass: boolean;
     bordered: boolean;
-    imageFull: boolean;
+    size: Size;
 }
 
-/** Props "statiche" per Card (non reattive) */
-export interface CardProps extends ContainerProps {
+/** Props non reattive della Card */
+export interface CardProps extends ComponentProps {
 
-    /** Lista di bottoni/azioni da mettere nel footer della card-body */
-    actions?: Array<Component | ComponentConfig>;
+    /** Sezioni content/footer: accettano string | fn reattiva | Content | ContentConfig | Component */
+    content?: string | ((s: any) => any) | Content | ContentConfig | Component<any, any>;
+    footer?: string | ((s: any) => any) | Content | ContentConfig | Component<any, any>;
+
+    /** Azioni header/body: array di config Button (non componenti già istanziati). */
+    headerActions?: Array<ComponentConfig<ButtonState, ButtonProps>>;
+    actions?: Array<ComponentConfig<ButtonState, ButtonProps>>; // alias legacy per body actions
+    bodyActions?: Array<ComponentConfig<ButtonState, ButtonProps>>;
+    /** Layout opzionale per le azioni (applicato direttamente allo slot) */
     actionsLayout?: Layout;
 
-    /** Classi aggiuntive su specifiche sezioni */
-    figureClassName?: string;   // wrapper figura (card-image)
-    imageClassName?: string;    // <img>
-    bodyClassName?: string;     // card-body
-    actionsClassName?: string;  // card-actions
-    className?: string;         // card wrapper (<div class="card ...">)
+    /** Alert opzionale mostrato sopra al body */
+    alert?: Alert | ComponentConfig<AlertState, AlertProps>;
+
+    /** Classi extra */
+    bodyClassName?: string;
+    actionsClassName?: string;
 }
 
-/**
- * ---- Piccoli componenti foglia per header e media ----
- * Li trattiamo come veri Component, così ereditano state() e props() dalla Card.
- */
+export class Card extends Component<CardState, CardProps> {
+    private _mediaChild?: Component<any, any>;
+    private _contentChild?: Component<any, any>;
+    private _footerChild?: Component<any, any>;
+    private _headerActions: Array<Component<any, any>> = [];
+    private _bodyActions: Array<Component<any, any>> = [];
+    private _actionsLayout?: Layout;
+    private _alertChild?: Alert;
 
-class CardImage extends Component<CardState, CardProps> {
-    protected hostTag(): string {
-        return 'figure';
-    }
-
-    protected view() {
-        const s = this.state();
-        const src = s.imageSrc;
-
-        const p = this.props as CardProps;
-        // classi per <figure>
-        const figureClasses = [
-            'card-image',
-            p.figureClassName ?? null
-        ].filter(Boolean);
-
-        this.syncHostClasses(new Set(figureClasses));
-
-        // classi per <img>
-        const imgCls = [
-            p.imageClassName ?? null
-        ].filter(Boolean).join(' ');
-
-        return html`
-            <img
-                src=${src}
-                alt=${s.imageAlt ?? ''}
-                class=${imgCls}
-            />
-        `;
-    }
-}
-
-/**
- * Card
- * È un Container, MA costruisce da sé la sua struttura interna in beforeMount():
- *   [ CardImage? , BodyContainer ]
- *
- * Dove BodyContainer è un Container con class="card-body"
- * che contiene (in ordine):
- *   CardTitle?
- *   CardDescription?
- *   userItems...
- *   ActionsContainer?
- *
- * ActionsContainer è un Container con class="card-actions ...".
- *
- * Così la Card rispetta esattamente il markup FlyonUI,
- * senza dover sovrascrivere la logica core di Container.
- */
-export class Card extends Container<CardState, CardProps> {
-
-    /** Stato iniziale della Card (reattivo). */
     protected override initialState(): CardState {
         return {
-            ...(super.initialState() as ContainerState),
-            title: 'Card title',
-            description: null,
-
+            ...(super.initialState() as ComponentState),
+            title: null,
             imageSrc: null,
             imageAlt: 'Card image',
-            imagePlacement: 'top',  // 'side' => card-side
+            imageFull: false,
+            imagePlacement: 'top',
             compact: false,
             glass: false,
             bordered: false,
-            imageFull: false
+            size: 'md',
         } satisfies CardState;
     }
 
-    /**
-     * Prima che il Container base monti i figli,
-     * costruiamo noi la gerarchia interna da passargli come `props.items`.
-     */
-    protected override beforeMount(): void {
-        const s = this.state();
-        const p = this.props as CardProps;
+    protected override afterMount(): void {
+        super.afterMount();
+        const p = this.props();
 
-        // ---- 1. Cloniamo gli items utente ----
-        const userItems = Array.isArray(p.items) ? [...p.items] : [];
+        // --- Content
+        this._contentChild = this.normalizeSection(p.content);
+        if (this._contentChild) this._contentChild.mount(this.slotEl('content'), this);
 
-        // ---- 2. Prep header (title/description) come componenti separati ----
-        const headerPieces: Array<Component | ComponentConfig> = [];
-        if (s.title) {
-            headerPieces.push(markup({
-                tag: 'h2',
-                className: 'card-title',
-                render: () => html`${s.title}`
-            }));
+        // --- Footer
+        this._footerChild = this.normalizeSection(p.footer);
+        if (this._footerChild) this._footerChild.mount(this.slotEl('footer'), this);
+
+        this._alertChild = this.normalizeAlert(p.alert);
+        if (this._alertChild) {
+            this._alertChild.mount(this.slotEl('alert'), this);
+            this._alertChild.el().classList.add('card-alert');
         }
 
-        if (s.description) {
-            headerPieces.push(markup({
-                tag: 'p',
-                className: 'opacity-70 text-sm',
-                render: () => html`${s.description}`
-            }));
+        // --- Actions
+        this._headerActions = this.buildActions(p.headerActions, { defaults: this.defaultHeaderActionCfg() });
+        this._bodyActions   = this.buildActions(p.bodyActions ?? p.actions);
+
+        if (this._bodyActions.length) {
+            const anchor = this.slotEl('actions');
+            for (const a of this._bodyActions) a.mount(anchor, this);
+
+            if (p.actionsLayout) {
+                this._actionsLayout = p.actionsLayout;
+                this._actionsLayout.apply({
+                    host: anchor,
+                    children: this._bodyActions,
+                    state: this.state(),
+                    containerProps: this.props() as Record<string, any>,
+                });
+            }
         }
 
-        // ---- 3. Prep actions container (footer della card-body) ----
-        let actionsContainer: Container<CardState, CardProps> | undefined = undefined;
-        const actions = Array.isArray(p.actions) ? p.actions : [];
-        if (actions.length > 0) {
-
-            const actionLayout = p.actionsLayout ?? undefined;
-
-            actionsContainer = container({
-                className: 'card-actions',
-                layout: actionLayout,
-                items: actions
-            });
+        if (this._headerActions.length) {
+            const anchor = this.slotEl('header-actions');
+            for (const a of this._headerActions) a.mount(anchor, this);
         }
-
-        // ---- 4. Body container (= card-body) ----
-        // ordine nel body:
-        //   [CardTitle?, CardDescription?, ...userItems, ActionsContainer?]
-        const bodyContentItems: Array<Component | ComponentConfig> = [
-            ...headerPieces,
-            ...userItems
-        ];
-        if (actionsContainer) {
-            bodyContentItems.push(actionsContainer);
-        }
-
-        const bodyContainer = container({
-            className: [
-                'card-body',
-                (p.bodyClassName ?? null)
-            ].filter(Boolean).join(' '),
-            layout: p.layout,           // "layout del body", NON del wrapper card
-            items: bodyContentItems
-        });
-
-        // ---- 5. Figura immagine opzionale ----
-        let figureComp: CardImage | undefined = undefined;
-        if (s.imageSrc) {
-            figureComp = new CardImage({
-                figureClassName: p.figureClassName,
-                imageClassName: p.imageClassName
-            });
-        }
-
-        // ---- 6. Imposto gli items REALI della Card ----
-        // Se c'è l'immagine va prima, poi il body.
-        const finalItems: Array<Component | ComponentConfig> = [];
-        if (figureComp) finalItems.push(figureComp);
-        finalItems.push(bodyContainer);
-
-        // Sovrascriviamo gli items del Container base
-        (this.props as any).items = finalItems;
-
-        // La Card "esterna" non deve avere un layout proprio,
-        // perché la disposizione (verticale, side...) è data dalle classi flyonUI
-        // tipo 'card-side', 'image-full', ecc.
-        (this.props as any).layout = undefined;
-
-        // Ora lasciamo che Container.beforeMount() faccia il suo lavoro:
-        // - monterà figureComp/bodyContainer in staging ereditando lo state(),
-        // - gestirà subscription disabled/hidden, ecc.
-        super.beforeMount();
     }
 
-    /** Applica le classi della shell .card al nodo host e poi rende i child effettivi. */
+    protected override beforeUnmount(): void {
+        if (this._actionsLayout) {
+            this._actionsLayout.dispose?.({
+                host: this.slotEl('actions'),
+                children: this._bodyActions,
+                state: this.state(),
+                containerProps: this.props() as Record<string, any>,
+            });
+        }
+        for (const a of this._bodyActions) a.unmount();
+        this._bodyActions = [];
+        for (const a of this._headerActions) a.unmount();
+        this._headerActions = [];
+
+        this._mediaChild?.unmount();  this._mediaChild = undefined;
+        this._contentChild?.unmount(); this._contentChild = undefined;
+        this._footerChild?.unmount(); this._footerChild = undefined;
+        this._alertChild?.unmount();  this._alertChild = undefined;
+
+        super.beforeUnmount();
+    }
+
     protected override view() {
         const s = this.state();
-        const p = this.props as CardProps;
+        const p = this.props();
 
-        const wrapperClasses = [
+        const rootCls = [
             'card',
-            'bg-base-100',
-            'shadow-md',
             s.compact ? 'card-compact' : null,
-            s.imagePlacement === 'side' ? 'card-side' : null,
             s.imageFull ? 'image-full' : null,
             s.glass ? 'glass' : null,
             s.bordered ? 'border' : null,
-            p.className ?? null
-        ].filter(Boolean);
+            p.className ?? null,
+            s.size !== 'md' ? `card-${s.size}` : null,
+        ].filter(Boolean).join(' ');
 
-        // sincronia classi sul host (tipo Button.syncHostClasses)
-        this.syncHostClasses(new Set(wrapperClasses));
+        const hasBodyActions = this._bodyActions.length > 0
+            || (p.bodyActions && p.bodyActions.length > 0)
+            || (p.actions && p.actions.length > 0);
+        const hasHeaderActions = this._headerActions.length > 0
+            || (p.headerActions && p.headerActions.length > 0);
 
-        // il render "vero" dei figli lo facciamo riusando il view() del Container base:
-        return super.view();
+        const showHeader = !!s.title || hasHeaderActions;
+
+        const showImage = s.imageSrc;
+        const imageHole = showImage ? html`
+            <figure>
+                <img src=${s.imageSrc} alt=${s.imageAlt} />
+            </figure>` : null;
+
+        return html`
+          <div class=${rootCls}>
+            ${showImage && s.imagePlacement === 'top'
+                ? imageHole
+                : null
+            }
+            ${showHeader
+                ? html`<div class="card-header flex justify-between items-center">
+                         ${s.title ? html`<span class="card-title">${s.title}</span>` : null}
+                         ${hasHeaderActions
+                            ? html`<div class="card-actions flex gap-0.5 sm:gap-3 flex-nowrap" data-slot="header-actions"></div>`
+                            : null}
+                       </div>`
+                : null
+            } 
+            ${slot('alert')}
+            <div class=${['card-body', p.bodyClassName ?? ''].filter(Boolean).join(' ')}>
+              <div data-slot="content" style="display: contents"></div>
+              ${hasBodyActions
+                ? html`<div
+                         class=${['card-actions', p.actionsClassName ?? ''].filter(Boolean).join(' ')}
+                         data-slot="actions"
+                       ></div>`
+                : null
+            }
+            </div>
+            <div data-slot="footer" style="display: contents"></div>
+              ${showImage && s.imagePlacement === 'bottom'
+                  ? imageHole
+                  : null
+              }
+          </div>
+        `;
+    }
+
+    // ---------------- helpers ----------------
+
+    /** Normalizza content/footer in un *Component* (Content incluso) */
+    private normalizeSection(
+        src?: string | ((s: any) => any) | Content | ContentConfig | Component<any, any> | null
+    ): Component<any, any> | undefined {
+        if (src instanceof Component) return src;
+        if (src instanceof Content)   return src;
+        if (typeof src === 'string' || typeof src === 'function' || (src && typeof src === 'object')) {
+            return content(src as any);
+        }
+        return undefined;
+    }
+
+    private normalizeAlert(src?: CardProps['alert']): Alert | undefined {
+        if (!src) return undefined;
+        if (src instanceof Alert) return src;
+        return alertFactory(src);
+    }
+
+    /** Converte config array → Button component, con merge opzionale di defaults e icone Tabler "short". */
+    private buildActions(
+        configs?: Array<ComponentConfig<ButtonState, ButtonProps>>,
+        opts?: { defaults?: Partial<ButtonState> }
+    ): Array<Component<any, any>> {
+        if (!configs || !configs.length) return [];
+        const defaults = opts?.defaults ?? {};
+
+        return configs.map(cfg => {
+            const merged: any = { ...(cfg ?? {}) };
+            const state = { ...(cfg?.state ?? {}) };
+
+            // applica defaults a livello piatto e state
+            for (const [k, v] of Object.entries(defaults)) {
+                if (merged[k] === undefined && state[k as keyof ButtonState] === undefined) {
+                    merged[k] = v;
+                }
+                if (state[k as keyof ButtonState] === undefined) {
+                    state[k as keyof ButtonState] = v as any;
+                }
+            }
+
+            merged.state = state;
+            return button(merged as ComponentConfig<ButtonState, ButtonProps>);
+        });
+    }
+
+    private defaultHeaderActionCfg(): Partial<ButtonState> {
+        return {
+            variant: 'text',
+            shape: 'circle',
+            size: 'sm',
+            icon: 'x',
+        };
     }
 }
 
-/** Factory ergonomica stile gli altri componenti */
+/** Factory */
 export function card(cfg: ComponentConfig<CardState, CardProps> = {}): Card {
     return new Card(cfg);
 }

@@ -9,10 +9,12 @@ import {State} from './State';
 export class NestedAttribute extends AbstractAttribute<State> {
 
     private inner: State;
+    private parent?: State;
 
-    constructor(key: string, rt: any, initial: Record<string, any>) {
+    constructor(key: string, rt: any, initial: Record<string, any>, parent?: State) {
         super(key, rt);
-        this.inner = new State(initial, undefined, this.runtime);
+        this.parent = parent;
+        this.inner = new State(initial, parent, this.runtime);
     }
 
     get(): State {
@@ -22,7 +24,7 @@ export class NestedAttribute extends AbstractAttribute<State> {
 
     set(v: any): void {
         if (v && typeof v === 'object') {
-            this.inner = v instanceof State ? v : new State(v, undefined, this.runtime);
+            this.inner = v instanceof State ? v : new State(v, this.parent, this.runtime);
             this.emit();
         } else {
             throw new Error(`Nested '${this.key()}' requires object/State.`);

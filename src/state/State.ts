@@ -88,7 +88,18 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
         for (const [k, raw] of aliasExprs) {
             const expr = raw.match(BRACED)![1];
             const binding = this.resolveAlias(expr);
-            this.attrs.set(k, new AliasAttribute(k, this._runtime, () => this.attribute(binding.path), binding.mapper as any));
+            const resolver = () => {
+                // Evita ricorsioni: alias verso se stesso devono “saltare” il livello corrente.
+                if (binding.path === k) {
+                    const ancestor = this.__resolveTop(binding.path, { skipSelf: true });
+                    if (!ancestor) {
+                        throw new Error(`Alias '${k}' cannot resolve path '${binding.path}' (self-referential)`);
+                    }
+                    return ancestor;
+                }
+                return this.attribute(binding.path);
+            };
+            this.attrs.set(k, new AliasAttribute(k, this._runtime, resolver, binding.mapper as any));
         }
     }
 
@@ -102,7 +113,11 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     // ---------- Public API ----------
 
     /** Subscribe a una chiave o path. */
-    on<T = any>(key: string, fn: (v: T) => void, opts?: { immediate?: boolean, buffer?: number, delay?: number }): Unsub {
+    on<T = any>(key: string, fn: (v: T) => void, opts?: {
+        immediate?: boolean,
+        buffer?: number,
+        delay?: number
+    }): Unsub {
         const needsPath = key.includes('.') || key.includes('[');
         const attr = needsPath ? this.attribute(key) : this.attrForRead<T>(key);
         return attr.subscribe(fn, opts);
@@ -111,6 +126,27 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     /** Proxy pubblico di questo State. */
     public(): State<TSchema> & TSchema & Record<string, any> {
         return this.proxy as State<TSchema> & TSchema & Record<string, any>;
+    }
+
+    /**
+     * Tracks dependencies accessed during the execution of the given computation function.
+     *
+     * @param {function(): T} compute - A function that computes a value and whose dependencies will be tracked.
+     * @return {{ value: T, deps: Set<string> }} An object containing the computed value and a set of accessed dependencies.
+     */
+    public track<T>(compute: () => T): { value: T; deps: Set<string> } {
+        const deps = new Set<string>();
+        const origRead = this.read.bind(this);
+        (this as any).read = (k: string) => {
+            deps.add(k);
+            return origRead(k);
+        };
+        try {
+            const value = compute();
+            return {value, deps};
+        } finally {
+            (this as any).read = origRead;
+        }
     }
 
     // ---------- Read/Write ----------
@@ -142,8 +178,8 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     // ---------- Attribute resolution ----------
 
     /** Risolve una chiave di primo livello risalendo la catena dei parent. */
-    __resolveTop(key: string): Attribute<any> | null {
-        if (this.attrs.has(key)) return this.attrs.get(key)!;
+    __resolveTop(key: string, opts?: { skipSelf?: boolean }): Attribute<any> | null {
+        if (!opts?.skipSelf && this.attrs.has(key)) return this.attrs.get(key)!;
         let cur = this.parent;
         while (cur) {
             if ((cur as any).attrs.has(key)) return (cur as any).attrs.get(key)!;
@@ -180,7 +216,7 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     private createAttributeFor(key: string, v: any): Attribute<any> {
         if (Array.isArray(v)) return new ListAttribute(key, this._runtime, v);
         if (v instanceof Map) return new MapAttribute(key, this._runtime, v);
-        if (v && typeof v === 'object') return new NestedAttribute(key, this._runtime, v);
+        if (v && typeof v === 'object') return new NestedAttribute(key, this._runtime, v, this as State);
         return new MutableAttribute(key, this._runtime, v);
     }
 

@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/html';
-import { container } from '../Container'; // factory -> returns new Container(...)
-import { button } from '../Button';       // factory -> returns new Button(...)
-import { flexLayout } from '../layouts/FlexLayout';
+import type {Meta, StoryObj} from '@storybook/html';
+import {container} from '../Container'; // factory -> returns new Container(...)
+import {button} from '../Button'; // factory -> returns new Button(...)
+import {flexLayout} from '../layouts/FlexLayout';
 
 // Helper to mount a Container instance into the story root element.
 function renderContainer(cfg: Parameters<typeof container>[0]) {
@@ -34,9 +34,9 @@ export const RowStart: Story = {
             // we don't need className for layout now, but we can still style background/border:
             className: 'p-4 bg-base-200 rounded-xl shadow-md',
             items: [
-                button({ text: 'One' }),
-                button({ text: 'Two' }),
-                button({ text: 'Three' }),
+                button({text: 'One'}),
+                button({text: 'Two'}),
+                button({text: 'Three'}),
             ],
         }),
 };
@@ -56,9 +56,9 @@ export const RowSpaceBetween: Story = {
             }),
             className: 'p-4 bg-base-200 rounded-xl shadow-md w-full',
             items: [
-                button({ text: 'Left' }),
-                button({ text: 'Middle' }),
-                button({ text: 'Right' }),
+                button({text: 'Left'}),
+                button({text: 'Middle'}),
+                button({text: 'Right'}),
             ],
         }),
 };
@@ -79,9 +79,9 @@ export const ColumnStack: Story = {
             }),
             className: 'p-4 bg-base-200 rounded-xl shadow-md max-w-sm',
             items: [
-                button({ text: 'Primary', color: 'primary', block: true }),
-                button({ text: 'Secondary', color: 'secondary', block: true }),
-                button({ text: 'Accent', color: 'accent', block: true }),
+                button({text: 'Primary', color: 'primary', block: true}),
+                button({text: 'Secondary', color: 'secondary', block: true}),
+                button({text: 'Accent', color: 'accent', block: true}),
             ],
         }),
 };
@@ -110,13 +110,13 @@ export const RowWrapWithFlexOverrides: Story = {
             }),
             className: 'p-4 bg-base-200 rounded-xl shadow-md max-w-md',
             items: [
-                button({ text: 'Static',    flex: '0 0 auto' }),
-                button({ text: 'Grow 1',    flex: '1 1 auto' }),
-                button({ text: 'Grow 2',    flex: '2 1 auto' }),
-                button({ text: 'Static B',  flex: '0 0 auto' }),
-                button({ text: 'Static C',  flex: '0 0 auto' }),
-                button({ text: 'Wide',      flex: '3 1 auto' }),
-                button({ text: 'One more',  flex: '1 1 auto' }),
+                button({text: 'Static', flex: '0 0 auto'}),
+                button({text: 'Grow 1', flex: '1 1 auto'}),
+                button({text: 'Grow 2', flex: '2 1 auto'}),
+                button({text: 'Static B', flex: '0 0 auto'}),
+                button({text: 'Static C', flex: '0 0 auto'}),
+                button({text: 'Wide', flex: '3 1 auto'}),
+                button({text: 'One more', flex: '1 1 auto'}),
             ],
         }),
 };

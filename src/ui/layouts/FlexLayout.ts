@@ -1,4 +1,4 @@
-import type { Layout, LayoutApplyContext } from './Layout';
+import type {Layout, LayoutApplyContext} from './Layout';
 
 /**
  * Public configuration for a flexbox layout.
@@ -65,10 +65,11 @@ export interface FlexLayoutConfig {
  * swapping Flyon/Tailwind/etc. won't break layout semantics.
  */
 export class FlexLayout implements Layout {
-    constructor(private cfg: FlexLayoutConfig) {}
+    constructor(private cfg: FlexLayoutConfig) {
+    }
 
     apply(ctx: LayoutApplyContext): void {
-        const { host, children } = ctx;
+        const {host, children} = ctx;
         const c = this.cfg;
 
         // ----- container styles -------------------------------------------------
@@ -224,5 +225,5 @@ function mapJustifyContent(v: FlexLayoutConfig['justify']): string {
 export function flexLayout(
     cfg: Omit<FlexLayoutConfig, 'type'>
 ): FlexLayout {
-    return new FlexLayout({ type: 'flex', ...cfg });
+    return new FlexLayout({type: 'flex', ...cfg});
 }

@@ -1,4 +1,4 @@
-import type { Layout, LayoutApplyContext } from './Layout';
+import type {Layout, LayoutApplyContext} from './Layout';
 
 /**
  * Public configuration for a CSS Grid layout.
@@ -86,14 +86,15 @@ export interface GridLayoutConfig {
  * The goal is to make GridLayout completely independent from Tailwind/Flyon.
  */
 export class GridLayout implements Layout {
-    constructor(private cfg: GridLayoutConfig) {}
+    constructor(private cfg: GridLayoutConfig) {
+    }
 
     /**
      * Apply the layout to a container + its children.
      * Called by Container after it has mounted/updated its children in the DOM.
      */
     apply(ctx: LayoutApplyContext): void {
-        const { host, children } = ctx;
+        const {host, children} = ctx;
         const c = this.cfg;
 
         // ----------------------------
@@ -194,5 +195,5 @@ export class GridLayout implements Layout {
 export function gridLayout(
     cfg: Omit<GridLayoutConfig, 'type'>
 ): GridLayout {
-    return new GridLayout({ type: 'grid', ...cfg });
+    return new GridLayout({type: 'grid', ...cfg});
 }

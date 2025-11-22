@@ -19,6 +19,9 @@
 //      "@form/*": ["src/form/*"],
 //      "@validation/*": ["src/validation/*"],
 //      "@refx/*": ["src/core/*"]
+    },
+    "compilerOptions": {
+      "types": ["vitest/globals", "jsdom"]
     }
   },
   "include": [

@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/html';
-import { container } from '../Container';
-import { button } from '../Button';
-import { gridLayout } from '../layouts/GridLayout';
+import type {Meta, StoryObj} from '@storybook/html';
+import {container} from '../Container';
+import {button} from '../Button';
+import {gridLayout} from '../layouts/GridLayout';
 
 /**
  * Helper to mount a Container configured with a grid layout,
@@ -34,12 +34,12 @@ export const ThreeColsGap: Story = {
             }),
             className: 'p-4 bg-base-200 rounded-xl shadow-md',
             items: [
-                button({ text: 'A' }),
-                button({ text: 'B' }),
-                button({ text: 'C' }),
-                button({ text: 'D' }),
-                button({ text: 'E' }),
-                button({ text: 'F' }),
+                button({text: 'A'}),
+                button({text: 'B'}),
+                button({text: 'C'}),
+                button({text: 'D'}),
+                button({text: 'E'}),
+                button({text: 'F'}),
             ],
         }),
 };
@@ -104,12 +104,12 @@ export const AutoFitCards: Story = {
             }),
             className: 'p-4 bg-base-200 rounded-xl shadow-md',
             items: [
-                button({ text: 'Card 1', className: 'h-24 w-full' }),
-                button({ text: 'Card 2', className: 'h-24 w-full' }),
-                button({ text: 'Card 3', className: 'h-24 w-full' }),
-                button({ text: 'Card 4', className: 'h-24 w-full' }),
-                button({ text: 'Card 5', className: 'h-24 w-full' }),
-                button({ text: 'Card 6', className: 'h-24 w-full' }),
+                button({text: 'Card 1', className: 'h-24 w-full'}),
+                button({text: 'Card 2', className: 'h-24 w-full'}),
+                button({text: 'Card 3', className: 'h-24 w-full'}),
+                button({text: 'Card 4', className: 'h-24 w-full'}),
+                button({text: 'Card 5', className: 'h-24 w-full'}),
+                button({text: 'Card 6', className: 'h-24 w-full'}),
             ],
         }),
 };
@@ -172,12 +172,12 @@ export const AlignmentDemo: Story = {
             }),
             className: 'p-4 bg-base-200 rounded-xl shadow-md inline-block',
             items: [
-                button({ text: 'A', className: 'h-8 w-8 text-xs' }),
-                button({ text: 'B', className: 'h-8 w-12 text-xs' }),
-                button({ text: 'C', className: 'h-8 w-16 text-xs' }),
-                button({ text: 'D', className: 'h-8 w-8 text-xs' }),
-                button({ text: 'E', className: 'h-8 w-12 text-xs' }),
-                button({ text: 'F', className: 'h-8 w-16 text-xs' }),
+                button({text: 'A', className: 'h-8 w-8 text-xs'}),
+                button({text: 'B', className: 'h-8 w-12 text-xs'}),
+                button({text: 'C', className: 'h-8 w-16 text-xs'}),
+                button({text: 'D', className: 'h-8 w-8 text-xs'}),
+                button({text: 'E', className: 'h-8 w-12 text-xs'}),
+                button({text: 'F', className: 'h-8 w-16 text-xs'}),
             ],
         }),
 };
