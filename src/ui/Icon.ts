@@ -60,7 +60,7 @@ export function icon(
     cfg: ComponentConfig<IconState, IconProps> | string = {}
 ): Icon {
     if (typeof cfg === 'string') {
-        return new Icon({ state: { icon: cfg } });
+        return new Icon({ icon: cfg });
     }
     return new Icon(cfg);
 }

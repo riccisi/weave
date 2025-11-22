@@ -15,6 +15,7 @@ import {textfield} from "@ui/inputs/TextField";
 import {checkbox} from "@ui/inputs/Checkbox";
 import {radio} from "@ui/inputs/Radio";
 import {content} from "@ui/Content";
+import {avatarGroup} from "@ui/AvatarGroup";
 
 const s = new State({
     text: "Example",
@@ -64,16 +65,35 @@ let c = container({
             onClick: (btn, ev) => { btn.state().loading = true; },
             decorators: [
                 indicator({
-                    active: "{!valid}",
+                    active: true,
                     //content: badge({ color:"error", text: "ciao",  })
-                    content: status({ color: "error", animation: "ping" })
+                    content: icon("{icon}")
                 })
             ]
         }),
         status({ color: "error", animation: "pulse" }),
         badge({color: "error", text: "test"}),
-        icon("{icon}"),
-        avatar({ ring: true})
+        icon({ icon: "{icon}", className: "color-green" }),
+        avatar({
+            src: "https://cdn.flyonui.com/fy-assets/avatar/avatar-1.png",
+            decorators: [
+                indicator({
+                    active: true,
+                    //content: badge({ color:"error", text: "ciao",  })
+                    //content: status({ color: "error", animation: "ping" }),
+                    items: [{
+                        position: "bottom-end",
+                        content: status({ color: "error", animation: "ping" })
+                    }]
+                })
+            ]
+        }),
+        avatarGroup({
+            avatars: [
+                avatar("https://cdn.flyonui.com/fy-assets/avatar/avatar-1.png"),
+                avatar("https://cdn.flyonui.com/fy-assets/avatar/avatar-2.png")
+            ]
+        })
     ]
 });
 

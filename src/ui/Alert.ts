@@ -1,4 +1,3 @@
-// src/ui/Alert.ts
 import { html } from 'uhtml';
 import { slot, Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
 import { Button } from './Button';

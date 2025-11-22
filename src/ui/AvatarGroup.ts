@@ -118,8 +118,18 @@ export class AvatarGroup extends Component<AvatarGroupState, AvatarGroupProps> {
             const hidden = extra <= 0;
 
             return html`
-            <div class=${['avatar', hidden ? 'hidden' : ''].filter(Boolean).join(' ')}>
-              <div class=${['placeholder', sizeCls, shapeCls, 'bg-base-300', 'text-base-content', extraCls]
+            <div class=${['avatar', 'avatar-placeholder', hidden ? 'hidden' : ''].filter(Boolean).join(' ')}>
+              <div class=${[
+                        'flex',
+                        'items-center',
+                        'justify-center',
+                        'uppercase',
+                        sizeCls,
+                        shapeCls,
+                        'bg-base-300',
+                        'text-base-content',
+                        extraCls
+                    ]
                     .filter(Boolean)
                     .join(' ')}>
                 +${extra}

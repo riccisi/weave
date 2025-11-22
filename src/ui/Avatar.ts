@@ -1,4 +1,3 @@
-// src/ui/Avatar.ts
 import { html } from 'uhtml';
 import { Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
 
@@ -19,6 +18,8 @@ export interface AvatarState extends ComponentState {
 
     /** Iniziali da mostrare nel placeholder (se non date, derivano da alt) */
     initials: string | null;
+    /** Icona opzionale per il placeholder (classe Tailwind/Iconify). */
+    placeholderIcon: string | null;
 
     /** Misura dell’avatar */
     size: AvatarSize;
@@ -41,10 +42,10 @@ export interface AvatarState extends ComponentState {
 }
 
 export interface AvatarProps extends ComponentProps {
-    /** Niente di extra per ora (className è già in ComponentProps) */
 }
 
 export class Avatar extends Component<AvatarState, AvatarProps> {
+
     protected override initialState(): AvatarState {
         return {
             ...(super.initialState() as ComponentState),
@@ -52,9 +53,10 @@ export class Avatar extends Component<AvatarState, AvatarProps> {
             src: null,
             alt: 'Avatar',
             initials: null,
+            placeholderIcon: null,
 
             size: 'md',
-            shape: 'rounded',
+            shape: 'circle',
 
             ring: false,
             ringColor: null,
@@ -68,49 +70,67 @@ export class Avatar extends Component<AvatarState, AvatarProps> {
 
     protected override view() {
         const s = this.state();
+        const p = this.props();
 
-        // Root = <div class="avatar">
-        const rootClasses = ['avatar'].join(' ');
+        const rootClasses = [
+            'avatar',
+            s.src ? null : 'avatar-placeholder',
+            p.className ?? null,
+        ].filter(Boolean).join(' ');
 
         // Inner box: shape + size + ring
         const sizeCls = this.sizeToClass(s.size);
         const shapeCls = this.shapeToClass(s.shape);
 
-        const ringClasses: string[] = [];
-        if (s.ring) {
-            ringClasses.push('ring');
-            ringClasses.push(s.ringColor ?? 'ring-base-300');
-            ringClasses.push(s.ringOffset ?? 'ring-offset-base-100');
-            const ro = s.ringOffsetSize ?? 2;
-            ringClasses.push(`ring-offset-${ro}`);
-        }
+        const innerCls = ['overflow-hidden', sizeCls, shapeCls, ...this.ringClasses(s)]
+            .filter(Boolean)
+            .join(' ');
 
-        const innerCls = ['overflow-hidden', sizeCls, shapeCls, ...ringClasses].filter(Boolean).join(' ');
-
-        // Contenuto: img oppure placeholder con initials
+        // Contenuto: img oppure placeholder (initials / icona)
         const content = s.src
             ? html`<img src=${s.src} alt=${s.alt ?? ''} />`
-            : html`
-          <span class="${['placeholder', 'flex', 'items-center', 'justify-center', s.bgClass ?? '', s.textClass ?? '']
-                .filter(Boolean)
-                .join(' ')}">
-            ${this.computeInitials(s)}
-          </span>
-        `;
+            : this.renderPlaceholder(s);
 
         return html`
-      <div class=${rootClasses}>
-        <div class=${innerCls}>
-          ${content}
-        </div>
-      </div>
-    `;
+          <div class=${rootClasses}>
+            <div class=${innerCls}>
+              ${content}
+            </div>
+          </div>
+        `;
     }
 
     // ---- helpers ----------------------------------------------------------------
 
+    private renderPlaceholder(s: AvatarState) {
+        const wrapperCls = [
+            'flex',
+            'items-center',
+            'justify-center',
+            'uppercase',
+            s.bgClass ?? '',
+            s.textClass ?? '',
+        ].filter(Boolean).join(' ');
+
+        const icon = s.placeholderIcon;
+        const payload = icon
+            ? html`<span class=${icon}></span>`
+            : html`${this.computeInitials(s)}`;
+
+        return html`<span class=${wrapperCls}>${payload}</span>`;
+    }
+
+    private ringClasses(s: AvatarState): string[] {
+        if (!s.ring) return [];
+        const ringClasses: string[] = ['ring'];
+        ringClasses.push(s.ringColor ?? 'ring-base-300');
+        ringClasses.push(s.ringOffset ?? 'ring-offset-base-100');
+        const ro = s.ringOffsetSize ?? 2;
+        ringClasses.push(`ring-offset-${ro}`);
+        return ringClasses;
+    }
+
     private sizeToClass(size: AvatarSize): string {
-        // Tailwind >=3 ha l’utility "size-*". Tweak a piacere.
         switch (size) {
             case 'xs': return 'size-6';
             case 'sm': return 'size-8';
@@ -142,10 +162,14 @@ export class Avatar extends Component<AvatarState, AvatarProps> {
         const last  = parts.length > 1 ? parts[parts.length - 1][0] : '';
         return (first + last).toUpperCase() || (first.toUpperCase() || '?');
     }
+
 }
 
 export function avatar(
-    cfg: ComponentConfig<AvatarState, AvatarProps> = {}
+    cfg: ComponentConfig<AvatarState, AvatarProps> | string = {}
 ): Avatar {
+    if (typeof cfg === 'string') {
+        return new Avatar({ src: cfg });
+    }
     return new Avatar(cfg);
 }
