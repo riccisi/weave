@@ -1,9 +1,10 @@
 // src/ui/Button.ts
 import { html } from 'uhtml';
 import { type ComponentConfig, type ComponentProps } from './Component';
-import { InteractiveComponent, type InteractiveComponentState } from './InteractiveComponent';
+import { InteractiveComponent } from './InteractiveComponent';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 import { icon, type Icon } from './Icon';
+import { mergeSchemas } from './schemaUtils';
 
 type Variant = 'solid' | 'soft' | 'outline' | 'text' | 'gradient';
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -39,23 +40,24 @@ export class Button extends InteractiveComponent<ButtonState, ButtonProps> {
     private _iconMountedSide: 'left' | 'right' | null = null;
     private _spinnerEl?: HTMLElement;
 
-    protected override initialState(): ButtonState {
-        return {
-            ...(super.initialState() as InteractiveComponentState),
-            text: '',
-            variant: 'solid',
-            color: 'default',
-            size: 'md',
-            wide: false,
-            block: false,
-            glass: false,
-            active: false,
-            loading: false,
-            shape: 'rounded',
-            icon: null,
-            iconPosition: 'left',
-            customColor: null,
-        } satisfies ButtonState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                text: { type: 'string', default: '' },
+                variant: { type: 'string', default: 'solid' },
+                color: { type: 'string', default: 'default' },
+                size: { type: 'string', default: 'md' },
+                wide: { type: 'boolean', default: false },
+                block: { type: 'boolean', default: false },
+                glass: { type: 'boolean', default: false },
+                active: { type: 'boolean', default: false },
+                loading: { type: 'boolean', default: false },
+                shape: { type: 'string', default: 'rounded' },
+                icon: { type: ['string', 'null'], default: null },
+                iconPosition: { type: 'string', enum: ['left', 'right'], default: 'left' },
+                customColor: { type: ['string', 'null'], default: null }
+            }
+        });
     }
 
     protected override beforeMount(): void {

@@ -1,8 +1,9 @@
 import { html } from 'uhtml';
-import { slot, Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
+import { slot, Component, type ComponentConfig, type ComponentProps } from './Component';
 import { Button } from './Button';
 import { FlyonColor, FlyonColorClasses } from './tokens';
 import { content, Content, type ContentConfig } from './Content'; // nuovo Content unificato
+import { mergeSchemas } from './schemaUtils';
 
 export type Variant = 'solid' | 'soft' | 'outline' | 'dashed';
 
@@ -25,14 +26,15 @@ export class Alert extends Component<AlertState, AlertProps> {
     private _buttons: Button[] = [];
     private _content?: Content;
 
-    protected override initialState(): AlertState {
-        return {
-            ...(super.initialState() as ComponentState),
-            variant: 'solid',
-            color: 'default',
-            title: null,
-            icon: null
-        } satisfies AlertState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                variant: { type: 'string', default: 'solid' },
+                color: { type: 'string', default: 'default' },
+                title: { type: ['string', 'null'], default: null },
+                icon: { type: ['string', 'null'], default: null }
+            }
+        });
     }
 
     protected override afterMount(): void {

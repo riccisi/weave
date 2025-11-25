@@ -9,6 +9,7 @@ import {
     type InputSize
 } from './BaseInput';
 import {ChoiceInput, type ChoiceState} from './ChoiceInput';
+import { mergeSchemas } from '../schemaUtils';
 
 type CheckboxColor =
     | 'default' | 'primary' | 'secondary' | 'accent'
@@ -47,14 +48,16 @@ export class Checkbox extends ChoiceInput<CheckboxState> {
         return [];
     }
 
-    protected override extraInitialState(): CheckboxState {
-        return {
-            color: 'default',
-            shape: 'square',
-            bordered: false,
-            labelPlacement: 'right',
-            indeterminate: false
-        } satisfies CheckboxState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                color: { type: 'string', default: 'default' },
+                shape: { type: 'string', default: 'square' },
+                bordered: { type: 'boolean', default: false },
+                labelPlacement: { type: 'string', default: 'right' },
+                indeterminate: { type: 'boolean', default: false }
+            }
+        });
     }
 
     protected override beforeMount(): void {

@@ -8,8 +8,234 @@ import {ListAttribute} from './ListAttribute';
 import {MapAttribute} from './MapAttribute';
 import {PathAttribute} from './PathAttribute';
 import {StateConfig} from './StateConfig';
+import Ajv, {type Ajv as AjvInstance, type ErrorObject, type Options as AjvOptions, type ValidateFunction} from 'ajv';
 
 const BRACED = /^\{\s*(.+?)\s*\}$/;
+const DEFAULT_AJV_OPTIONS: AjvOptions = {
+    allErrors: true,
+    useDefaults: true,
+    removeAdditional: false,
+};
+const GLOBAL_AJV = new Ajv(DEFAULT_AJV_OPTIONS);
+
+const buildAjv = (extra?: AjvOptions): AjvInstance => {
+    if (!extra) return GLOBAL_AJV;
+    return new Ajv({ ...DEFAULT_AJV_OPTIONS, ...extra });
+};
+
+export interface StateOptions<TSchema extends Record<string, any> = Record<string, any>> {
+    schema?: Record<string, any>;
+    ajv?: AjvInstance;
+    ajvOptions?: AjvOptions;
+    validateOnWrite?: boolean;
+    parent?: State<any>;
+    runtime?: ReactiveRuntime;
+    validators?: Record<string, (value: any, state: State<any>) => string | void>;
+}
+
+export interface ValidationChangeEvent {
+    target: State<any>;
+    valid: boolean;
+    errors: SchemaErrorEntry[];
+}
+
+export interface SchemaErrorEntry {
+    context: string;
+    path: string;
+    key?: string;
+    errors: ErrorObject[];
+}
+
+export interface StateSchemaHandle {
+    normalize(value: any, contextLabel: string, opts?: { emitErrors?: boolean, inPlace?: boolean }): any;
+    child(key: string): StateSchemaHandle | undefined;
+    items(): StateSchemaHandle | undefined;
+    stateOptions(): StateOptions<any>;
+    validator(): ValidateFunction;
+}
+
+type CustomValidator = (value: any, state: State<any>) => string | void;
+
+class SchemaHandle implements StateSchemaHandle {
+    private readonly ajv: AjvInstance;
+    private readonly validateFn: ValidateFunction;
+    private readonly children = new Map<string, SchemaHandle>();
+    private readonly arrayItems?: SchemaHandle;
+    private readonly validateWrites: boolean;
+
+    constructor(
+        private readonly schema: Record<string, any>,
+        opts: StateOptions,
+        sharedAjv?: AjvInstance,
+        private onError?: (context: string, errors?: ErrorObject[] | null) => void
+    ) {
+        this.validateWrites = !!opts.validateOnWrite;
+        this.ajv = sharedAjv
+            ?? opts.ajv
+            ?? (opts.ajvOptions ? buildAjv(opts.ajvOptions) : GLOBAL_AJV);
+        this.validateFn = this.ajv.compile(schema ?? {});
+
+        const props = schema?.properties;
+        if (props && typeof props === 'object') {
+            for (const [key, childSchema] of Object.entries(props)) {
+                if (childSchema && typeof childSchema === 'object') {
+                    this.children.set(key, new SchemaHandle(childSchema as Record<string, any>, opts, this.ajv, this.onError));
+                }
+            }
+        }
+
+        const itemsSchema = this.resolveItemsSchema(schema);
+        if (itemsSchema) {
+            this.arrayItems = new SchemaHandle(itemsSchema, opts, this.ajv, this.onError);
+        }
+    }
+
+    normalize(value: any, contextLabel: string, opts?: { emitErrors?: boolean, inPlace?: boolean }): any {
+        const emit = opts?.emitErrors !== false;
+        const payload = opts?.inPlace ? prepareInPlaceValue(value) : cloneForSchema(value);
+        const ok = this.validateFn(payload);
+        if (!ok) {
+            if (emit) this.dispatchErrors(contextLabel, this.validateFn.errors ?? []);
+            return value;
+        }
+        if (emit) this.dispatchErrors(contextLabel, null);
+        return payload;
+    }
+
+    child(key: string): StateSchemaHandle | undefined {
+        return this.children.get(key);
+    }
+
+    items(): StateSchemaHandle | undefined {
+        return this.arrayItems;
+    }
+
+    stateOptions(): StateOptions<any> {
+        return {
+            schema: this.schema,
+            ajv: this.ajv,
+            validateOnWrite: this.validateWrites
+        };
+    }
+
+    validator(): ValidateFunction {
+        return this.validateFn;
+    }
+
+    private resolveItemsSchema(schema: Record<string, any>): Record<string, any> | undefined {
+        if (!schema) return undefined;
+        const items = schema.items;
+        if (!items) return undefined;
+        if (Array.isArray(items)) {
+            return typeof items[0] === 'object' ? items[0] as Record<string, any> : undefined;
+        }
+        return typeof items === 'object' ? items as Record<string, any> : undefined;
+    }
+
+    private dispatchErrors(contextLabel: string, errors: ErrorObject[] | null): void {
+        if (!this.onError) return;
+        if (!errors || errors.length === 0) {
+            this.onError(contextLabel, null);
+            return;
+        }
+        const grouped = this.groupErrorsByPath(contextLabel, errors);
+        if (!grouped.size) {
+            this.onError(contextLabel, errors);
+            return;
+        }
+        for (const [ctx, list] of grouped) {
+            this.onError(ctx, list);
+        }
+    }
+
+    private groupErrorsByPath(baseContext: string, errors: ErrorObject[]): Map<string, ErrorObject[]> {
+        const grouped = new Map<string, ErrorObject[]>();
+        for (const err of errors) {
+            const rel = this.relativePathForError(err);
+            const ctx = this.joinContext(baseContext, rel);
+            const bucket = grouped.get(ctx) ?? [];
+            bucket.push(err);
+            grouped.set(ctx, bucket);
+        }
+        return grouped;
+    }
+
+    private joinContext(base: string, relative: string): string {
+        if (!relative) return base;
+        if (relative.startsWith('[')) return `${base}${relative}`;
+        if (base === 'State') return `State.${relative}`;
+        return `${base}.${relative}`;
+    }
+
+    private relativePathForError(err: ErrorObject): string {
+        const pointer = (err as any).instancePath ?? err.dataPath ?? '';
+        let rel = this.pointerToPath(pointer);
+        if (err.keyword === 'required' && typeof (err.params as any)?.missingProperty === 'string') {
+            const missing = (err.params as any).missingProperty;
+            rel = rel ? `${rel}.${missing}` : missing;
+        }
+        if (err.keyword === 'additionalProperties' && typeof (err.params as any)?.additionalProperty === 'string') {
+            const extra = (err.params as any).additionalProperty;
+            rel = rel ? `${rel}.${extra}` : extra;
+        }
+        return rel;
+    }
+
+    private pointerToPath(pointer: string): string {
+        if (!pointer) return '';
+        const segments = pointer.split('/').filter(Boolean).map(seg => seg.replace(/~1/g, '/').replace(/~0/g, '~'));
+        let path = '';
+        for (const seg of segments) {
+            if (/^\d+$/.test(seg)) path += `[${seg}]`;
+            else path += path ? `.${seg}` : seg;
+        }
+        return path;
+    }
+}
+
+class StateSchemaError extends Error {
+    constructor(context: string, errors?: ErrorObject[] | null) {
+        super(StateSchemaError.buildMessage(context, errors));
+    }
+
+    private static buildMessage(context: string, errors?: ErrorObject[] | null): string {
+        if (!errors?.length) return `${context} failed schema validation.`;
+        const first = errors[0];
+        const path = first.dataPath || '/';
+        const detail = first.message ?? first.keyword;
+        return `${context} failed schema validation at '${path}': ${detail}`;
+    }
+}
+
+function cloneForSchema(value: any): any {
+    if (Array.isArray(value)) return value.map(cloneForSchema);
+    if (value && typeof value === 'object') {
+        const out: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) {
+            if (typeof v === 'function') continue;
+            out[k] = cloneForSchema(v);
+        }
+        return out;
+    }
+    return value;
+}
+
+function cloneNormalizedValue(value: any): any {
+    if (Array.isArray(value)) return value.map(cloneNormalizedValue);
+    if (value && typeof value === 'object') {
+        const out: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) out[k] = cloneNormalizedValue(v);
+        return out;
+    }
+    return value;
+}
+
+function prepareInPlaceValue(value: any): any {
+    if (!value) return value;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'object') return value;
+    return value;
+}
 
 /**
  * Represents a reactive state management system. This class allows for defining,
@@ -21,12 +247,33 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     [key: string]: any;
 
     readonly _runtime: ReactiveRuntime;
+    private parent?: State<any>;
     private attrs = new Map<string, Attribute<any>>();
     private declared = new Set<string>();
     private proxy!: State<TSchema>;
+    private schemaHandle?: SchemaHandle;
+    private _validationListeners = new Set<(evt: ValidationChangeEvent) => void>();
+    private _customValidators = new Map<string, CustomValidator[]>();
+    private _children: Set<State<any>> = new Set();
+    private _schemaErrors = new Map<string, SchemaErrorEntry>();
 
-    constructor(initial: TSchema = {} as TSchema, private parent?: State<any>, runtime?: ReactiveRuntime) {
-        this._runtime = runtime ?? (parent ? (parent as any)._runtime : new ReactiveRuntime());
+    constructor(initial: TSchema = {} as TSchema, options: StateOptions<TSchema> = {}) {
+        this.parent = options.parent;
+        if (this.parent) {
+            (this.parent as State<any>)._children.add(this);
+        }
+        const inheritedRuntime = this.parent ? (this.parent as any)._runtime : undefined;
+        const runtime = options.runtime ?? inheritedRuntime ?? new ReactiveRuntime();
+        this._runtime = runtime;
+
+        if (options.validators) this.registerValidators(options.validators);
+
+        if (options.schema) {
+            this.schemaHandle = new SchemaHandle(options.schema, options, undefined, (ctx, errors) => this.emitValidationChange(ctx, errors));
+            const payload = this.extractSchemaPayload(initial as Record<string, any>);
+            const normalized = this.schemaHandle.normalize(payload, 'State');
+            initial = this.applySchemaDefaults(initial as Record<string, any>, normalized) as TSchema;
+        }
 
         this.recordSchema(initial as Record<string, any>);
         this.proxy = this.createProxy();
@@ -34,6 +281,7 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
         const {aliasExprs, deriveds} = this.buildConcrete(initial as Record<string, any>);
         this.resolveAliases(aliasExprs);
         this.createDerived(deriveds);
+        this.applyInitialValidators(initial as Record<string, any>);
 
         return this.proxy as State<TSchema> & TSchema & Record<string, any>;
     }
@@ -66,40 +314,44 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
 
     /** Passo 1: crea attributi concreti; colleziona alias e derivate. */
     private buildConcrete(initial: Record<string, any>) {
-        const aliasExprs: Array<[string, string]> = [];
+        const aliasExprs: Array<{ key: string; expr: string; schema?: StateSchemaHandle }> = [];
         const deriveds: Array<[string, (s: State) => any]> = [];
 
         for (const [k, v] of Object.entries(initial)) {
+            const childSchema = this.schemaHandle?.child(k);
             if (typeof v === 'function') {
                 deriveds.push([k, v as any]);
                 continue;
             }
             if (typeof v === 'string' && BRACED.test(v)) {
-                aliasExprs.push([k, v]);
+                aliasExprs.push({key: k, expr: v, schema: childSchema});
                 continue;
             }
-            this.attrs.set(k, this.createAttributeFor(k, v));
+            this.attrs.set(k, this.createAttributeFor(k, v, childSchema));
         }
         return {aliasExprs, deriveds};
     }
 
     /** Passo 2: risolve alias via StateConfig (global). */
-    private resolveAliases(aliasExprs: Array<[string, string]>) {
-        for (const [k, raw] of aliasExprs) {
+    private resolveAliases(aliasExprs: Array<{ key: string; expr: string; schema?: StateSchemaHandle }>) {
+        for (const {key, expr: raw, schema} of aliasExprs) {
             const expr = raw.match(BRACED)![1];
             const binding = this.resolveAlias(expr);
             const resolver = () => {
                 // Evita ricorsioni: alias verso se stesso devono “saltare” il livello corrente.
-                if (binding.path === k) {
+                if (binding.path === key) {
                     const ancestor = this.__resolveTop(binding.path, { skipSelf: true });
                     if (!ancestor) {
-                        throw new Error(`Alias '${k}' cannot resolve path '${binding.path}' (self-referential)`);
+                        throw new Error(`Alias '${key}' cannot resolve path '${binding.path}' (self-referential)`);
                     }
                     return ancestor;
                 }
                 return this.attribute(binding.path);
             };
-            this.attrs.set(k, new AliasAttribute(k, this._runtime, resolver, binding.mapper as any));
+            const normalize = schema
+                ? (value: any) => schema.normalize(value, `State.${key}`, {emitErrors: false, inPlace: true})
+                : undefined;
+            this.attrs.set(key, new AliasAttribute(key, this._runtime, resolver, binding.mapper as any, normalize));
         }
     }
 
@@ -126,6 +378,35 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     /** Proxy pubblico di questo State. */
     public(): State<TSchema> & TSchema & Record<string, any> {
         return this.proxy as State<TSchema> & TSchema & Record<string, any>;
+    }
+
+    /** Subscribe to schema validation changes (fired only when the error set toggles). */
+    public onValidationChange(fn: (evt: ValidationChangeEvent) => void): () => void {
+        this._validationListeners.add(fn);
+        return () => {
+            this._validationListeners.delete(fn);
+        };
+    }
+
+    public schemaErrors(path?: string): ErrorObject[] | boolean | undefined {
+        if (!path) return this._schemaErrors.size ? [] : undefined;
+        const entry = this._schemaErrors.get(path);
+        return entry ? entry.errors : undefined;
+    }
+
+    public allSchemaErrors(): SchemaErrorEntry[] {
+        if (!this._schemaErrors.size) return [];
+        const entries: SchemaErrorEntry[] = [];
+        for (const entry of this._schemaErrors.values()) {
+            if (!entry.errors?.length) continue;
+            entries.push({
+                context: entry.context,
+                path: entry.path,
+                key: entry.key,
+                errors: [...entry.errors]
+            });
+        }
+        return entries;
     }
 
     /**
@@ -157,22 +438,30 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
 
     private write<T = any>(key: string, v: T): void {
         if (this.declared.has(key)) {
-            const local = this.attrs.get(key);
-            if (!local) throw new Error(`Invariant: declared key '${key}' has no attribute`);
-            local.set(v as any);
+            this.setLocalAttr(key, v);
             return;
         }
         let cur: State | undefined = this.parent;
         while (cur) {
             if ((cur as any).declared?.has(key)) {
-                const a: Attribute<any> | undefined = (cur as any).attrs.get(key);
-                if (!a) throw new Error(`Invariant: ancestor declares '${key}' but has no attribute`);
-                a.set(v as any);
+                (cur as State<any>).__acceptChildWrite(key, v);
                 return;
             }
             cur = (cur as any).parent;
         }
         throw new Error(`Cannot set unknown property '${key}' (no schema in chain)`);
+    }
+
+    private setLocalAttr<T = any>(key: string, value: T): void {
+        const local = this.attrs.get(key);
+        if (!local) throw new Error(`Invariant: declared key '${key}' has no attribute`);
+        const next = this.normalizeForSchema(key, value);
+        this.applyCustomValidators(key, next);
+        local.set(next as any);
+    }
+
+    public __acceptChildWrite(key: string, value: any): void {
+        this.setLocalAttr(key, value);
     }
 
     // ---------- Attribute resolution ----------
@@ -213,11 +502,35 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
     }
 
     /** Sceglie l'implementazione di Attribute in base al valore iniziale. */
-    private createAttributeFor(key: string, v: any): Attribute<any> {
-        if (Array.isArray(v)) return new ListAttribute(key, this._runtime, v);
-        if (v instanceof Map) return new MapAttribute(key, this._runtime, v);
-        if (v && typeof v === 'object') return new NestedAttribute(key, this._runtime, v, this as State);
-        return new MutableAttribute(key, this._runtime, v);
+    private createAttributeFor(key: string, v: any, childSchema?: StateSchemaHandle): Attribute<any> {
+        const effectiveSchema = childSchema ?? this.schemaHandle?.child(key);
+        let attr: Attribute<any>;
+        if (Array.isArray(v)) {
+            attr = new ListAttribute(key, this._runtime, v, effectiveSchema?.items());
+        } else if (v instanceof Map) {
+            attr = new MapAttribute(key, this._runtime, v);
+        } else if (v && typeof v === 'object') {
+            attr = new NestedAttribute(key, this._runtime, v, this as State, effectiveSchema);
+        } else {
+            attr = new MutableAttribute(key, this._runtime, v);
+        }
+        return this.attachOwnerMetadata(attr, key);
+    }
+
+    private attachOwnerMetadata(attr: Attribute<any>, key: string): Attribute<any> {
+        Object.defineProperty(attr, '__ownerState', {
+            value: this,
+            configurable: true,
+            enumerable: false,
+            writable: false
+        });
+        Object.defineProperty(attr, '__ownerKey', {
+            value: key,
+            configurable: true,
+            enumerable: false,
+            writable: false
+        });
+        return attr;
     }
 
     /** Parsing alias via risolutori globali. */
@@ -232,5 +545,183 @@ export class State<TSchema extends Record<string, any> = Record<string, any>> {
             }
         }
         return {path: expr.trim()};
+    }
+
+    private normalizeForSchema<T = any>(key: string, value: T): T {
+        if (!this.schemaHandle) return value;
+        const child = this.schemaHandle.child(key);
+        if (!child) return value;
+        if (typeof value === 'function' || this.isAliasToken(value)) return value;
+        if (value && typeof value === 'object') return value;
+        return child.normalize(value, `${this.constructor.name}.${key}`);
+    }
+
+    private extractSchemaPayload(initial: Record<string, any>): Record<string, any> {
+        const payload: Record<string, any> = {};
+        for (const [key, value] of Object.entries(initial)) {
+            if (typeof value === 'function' || this.isAliasToken(value)) continue;
+            const sanitized = this.sanitizeValueForSchema(value);
+            if (sanitized !== undefined) payload[key] = sanitized;
+        }
+        return payload;
+    }
+
+    private sanitizeValueForSchema(value: any): any {
+        if (value == null) return value;
+        if (typeof value === 'function' || this.isAliasToken(value)) return undefined;
+        if (Array.isArray(value)) {
+            return value
+                .map(entry => this.sanitizeValueForSchema(entry))
+                .filter(entry => entry !== undefined);
+        }
+        if (value && typeof value === 'object') {
+            const out: Record<string, any> = {};
+            for (const [k, v] of Object.entries(value)) {
+                if (typeof v === 'function' || this.isAliasToken(v)) continue;
+                const sanitized = this.sanitizeValueForSchema(v);
+                if (sanitized !== undefined) out[k] = sanitized;
+            }
+            return out;
+        }
+        return value;
+    }
+
+    private applySchemaDefaults(initial: Record<string, any>, normalized: any): Record<string, any> {
+        if (!normalized || typeof normalized !== 'object') return initial;
+        const result: Record<string, any> = {...initial};
+        for (const [key, value] of Object.entries(normalized)) {
+            result[key] = this.mergeDefaultValue(result[key], value);
+        }
+        return result;
+    }
+
+    private mergeDefaultValue(existing: any, normalized: any): any {
+        if (existing === undefined) return cloneNormalizedValue(normalized);
+        if (typeof existing === 'function' || this.isAliasToken(existing)) return existing;
+        if (Array.isArray(normalized)) return Array.isArray(existing) ? existing : cloneNormalizedValue(normalized);
+        if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
+            if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+                const merged: Record<string, any> = {...existing};
+                for (const [childKey, childValue] of Object.entries(normalized)) {
+                    merged[childKey] = this.mergeDefaultValue(existing[childKey], childValue);
+                }
+                return merged;
+            }
+            return existing;
+        }
+        return existing;
+    }
+
+    private isAliasToken(value: any): boolean {
+        return typeof value === 'string' && BRACED.test(value);
+    }
+
+    private emitValidationChange(context: string, errors?: ErrorObject[] | null): void {
+        const path = context.replace(/^State\./, '');
+        const changed = this.updateValidationEntry(context, path, errors);
+        if (!changed) return;
+        this.dispatchValidationEvent();
+        for (const child of this._children) {
+            child.emitValidationChange(context, errors);
+        }
+    }
+
+    private dispatchValidationEvent(): void {
+        if (!this._validationListeners.size) return;
+        const snapshot = this.allSchemaErrors();
+        const evt: ValidationChangeEvent = {
+            target: this,
+            valid: snapshot.length === 0,
+            errors: snapshot
+        };
+        for (const listener of this._validationListeners) {
+            try {
+                listener(evt);
+            } catch {
+                /* swallow */
+            }
+        }
+    }
+
+    private updateValidationEntry(context: string, path: string, errors?: ErrorObject[] | null): boolean {
+        if (!errors || errors.length === 0) {
+            if (!this._schemaErrors.has(path)) return false;
+            this._schemaErrors.delete(path);
+            return true;
+        }
+        const prev = this._schemaErrors.get(path);
+        if (prev && this.sameErrorSet(prev.errors, errors)) return false;
+        this._schemaErrors.set(path, {
+            context,
+            path,
+            key: context.split('.').pop(),
+            errors: [...errors]
+        });
+        return true;
+    }
+
+    private sameErrorSet(a: ErrorObject[], b: ErrorObject[]): boolean {
+        if (a === b) return true;
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            if (!this.sameError(a[i], b[i])) return false;
+        }
+        return true;
+    }
+
+    private sameError(a: ErrorObject, b: ErrorObject): boolean {
+        if (a.keyword !== b.keyword) return false;
+        if (this.errorPath(a) !== this.errorPath(b)) return false;
+        if ((a.message ?? '') !== (b.message ?? '')) return false;
+        return JSON.stringify(a.params ?? {}) === JSON.stringify(b.params ?? {});
+    }
+
+    private errorPath(err: ErrorObject): string {
+        return (err as any).instancePath ?? err.dataPath ?? '';
+    }
+
+    private registerValidators(map?: Record<string, CustomValidator>): void {
+        if (!map) return;
+        for (const [key, fn] of Object.entries(map)) {
+            if (typeof fn !== 'function') continue;
+            const list = this._customValidators.get(key) ?? [];
+            list.push(fn);
+            this._customValidators.set(key, list);
+        }
+    }
+
+    private applyInitialValidators(initial: Record<string, any>): void {
+        for (const key of Object.keys(initial)) {
+            const val = (initial as any)[key];
+            this.applyCustomValidators(key, val);
+        }
+    }
+
+    private applyCustomValidators(key: string, value: any): void {
+        if (typeof value === 'function') return;
+        if (this.isAliasToken(value)) return;
+        const validators = this._customValidators.get(key);
+        if (!validators?.length) return;
+        const errors: ErrorObject[] = [];
+        for (const fn of validators) {
+            const message = fn(value, this);
+            if (typeof message === 'string') {
+                errors.push({
+                    keyword: 'custom',
+                    dataPath: key,
+                    schemaPath: '',
+                    params: {},
+                    message
+                });
+            }
+        }
+        this.emitValidationChange(`State.${key}`, errors.length ? errors : null);
+    }
+
+    public dispose(): void {
+        if (this.parent) {
+            (this.parent as State<any>)._children.delete(this);
+        }
+        this._validationListeners.clear();
     }
 }

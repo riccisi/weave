@@ -109,7 +109,7 @@ const s = new State({ name: 'Ada' });
 
 ```ts
 const parent = new State({ name: 'Ada', valid: true });
-const child  = new State({}, parent); // nessuna chiave locale
+const child  = new State({}, { parent }); // nessuna chiave locale
 
 child.name = 'Alan';          // write inoltrata al parent
 console.log(parent.name);     // "Alan"
@@ -119,7 +119,7 @@ console.log(parent.name);     // "Alan"
 
 ```ts
 const parent = new State({ name: 'Ada', valid: true });
-const child  = new State({ name: 'John' }, parent);
+const child  = new State({ name: 'John' }, { parent });
 
 child.name = 'Alan';          // modifica locale
 console.log(child.name);      // "Alan"
@@ -474,12 +474,15 @@ Per path tipo `arr[0]something` manca il punto/prop: usa `arr[0].something`.
 
 ## API Reference
 
-### `new State(initial, parent?, runtime?)`
+### `new State(initial, options?)`
 Crea uno state con schema uguale a `initial`.
 
 - `initial`: chiavi di primo livello (valori, nested, array, mappe, alias `'{...}'`, derivate `(s)=>...`).
-- `parent`: opzionale, abilita ereditarietà e write-forwarding.
-- `runtime`: opzionale; se assente, riusa quello del parent o ne crea uno.
+- `options.parent`: opzionale, abilita ereditarietà e write-forwarding.
+- `options.runtime`: opzionale; se assente, riusa quello del parent o ne crea uno.
+- `options.schema`: JSON Schema per validazione/default (usa AJV condiviso).
+- `options.validateOnWrite`: se `true`, valida ad ogni assegnazione (non solo all'init).
+- `options.ajv` / `options.ajvOptions`: per fornire/customizzare l'istanza AJV.
 
 ### `state.on(keyOrPath, fn, { immediate = true })`
 Sottoscrive modifiche a una chiave/path. Restituisce `() => void` per annullare.

@@ -1,5 +1,6 @@
 import {BaseInput, type BaseInputProps, type BaseInputState} from './BaseInput';
-import type {ComponentConfig} from '../Component';
+import type {ComponentConfig}from '../Component';
+import { mergeSchemas } from '../schemaUtils';
 
 export interface DateFieldState {
     min: string | null;
@@ -7,11 +8,13 @@ export interface DateFieldState {
 }
 
 export class DateField extends BaseInput<string, DateFieldState> {
-    protected override extraInitialState(): DateFieldState {
-        return {
-            min: null,
-            max: null
-        } satisfies DateFieldState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                min: { type: ['string', 'null'], default: null },
+                max: { type: ['string', 'null'], default: null }
+            }
+        });
     }
 
     protected inputType(): string {

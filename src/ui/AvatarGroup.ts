@@ -2,7 +2,8 @@
 import { html } from 'uhtml';
 import { avatar, Avatar, type AvatarProps, type AvatarState } from './Avatar';
 import { content, type Content } from './Content';
-import { Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
+import { Component, type ComponentConfig, type ComponentProps } from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 type Overlap = 'none' | 'xs' | 'sm' | 'md' | 'lg';
 
@@ -28,11 +29,12 @@ export class AvatarGroup extends Component<AvatarGroupState, AvatarGroupProps> {
     private _avatars: Avatar[] = [];
     private _overflow?: Content;
 
-    protected override initialState(): AvatarGroupState {
-        return {
-            ...(super.initialState() as ComponentState),
-            max: null,
-        };
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                max: { type: ['number', 'null'], default: null }
+            }
+        });
     }
 
     /** Costruisce i figli (nessun mount qui). */

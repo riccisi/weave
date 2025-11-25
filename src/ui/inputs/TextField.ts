@@ -1,6 +1,7 @@
 // src/ui/inputs/TextField.ts
 import {BaseInput, type BaseInputProps, type BaseInputState} from './BaseInput';
-import type {ComponentConfig} from '../Component';
+import type {ComponentConfig}from '../Component';
+import { mergeSchemas } from '../schemaUtils';
 
 export interface TextFieldState {
     minLength: number | null;
@@ -10,13 +11,15 @@ export interface TextFieldState {
 }
 
 export class TextField extends BaseInput<string, TextFieldState> {
-    protected override extraInitialState(): TextFieldState {
-        return {
-            minLength: null,
-            maxLength: null,
-            pattern: null,
-            spellcheck: null
-        } satisfies TextFieldState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                minLength: { type: ['number', 'null'], default: null },
+                maxLength: { type: ['number', 'null'], default: null },
+                pattern: { type: ['string', 'null'], default: null },
+                spellcheck: { type: ['boolean', 'null'], default: null }
+            }
+        });
     }
 
     protected inputType(): string {

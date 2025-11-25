@@ -1,5 +1,6 @@
 // src/ui/InteractiveComponent.ts
 import { Component, type ComponentProps, type ComponentState } from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 /**
  * Stato reattivo per componenti interattivi.
@@ -31,12 +32,13 @@ export abstract class InteractiveComponent<
     protected _lastEffectiveDisabled = false;
 
     /** Merge dei default di Component con i flag di disabled. */
-    protected override initialState(): S {
-        return {
-            ...(super.initialState() as ComponentState),
-            disabled: false,
-            disabledInert: false,
-        } as S;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                disabled: { type: 'boolean', default: false },
+                disabledInert: { type: 'boolean', default: false },
+            }
+        });
     }
 
     /**

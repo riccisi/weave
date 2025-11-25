@@ -57,8 +57,11 @@ const meta: Meta = {
         },
         pill: {control: 'boolean'},
         dot: {control: 'boolean'},
-        iconLeft: {control: 'text'},
-        iconRight: {control: 'text'},
+        icon: {control: 'text'},
+        iconPosition: {
+            control: 'inline-radio',
+            options: ['left', 'right']
+        },
         className: {control: 'text'},
     }
 };
@@ -77,8 +80,8 @@ export const Playground: Story = {
         size: 'md',
         pill: true,
         dot: false,
-        iconLeft: 'icon-[tabler--star] size-4',
-        iconRight: null,
+        icon: 'icon-[tabler--star] size-4',
+        iconPosition: 'left',
         className: ''
     }
 };
@@ -130,7 +133,7 @@ export const SizesAndPill: Story = {
 /**
  * Dot badge e badge icona.
  * - dot:true aggiunge la classe 'badge-dot'.
- * - iconLeft/iconRight mostrano piccole icone utility.
+ * - icon mostra piccole icone utility; iconPosition ne controlla il lato.
  */
 export const DotAndIcons: Story = {
     render: () => {
@@ -140,20 +143,23 @@ export const DotAndIcons: Story = {
                 color: 'success',
                 variant: 'soft',
                 dot: true,
-                iconLeft: 'icon-[tabler--circle-check] size-4'
+                icon: 'icon-[tabler--circle-check] size-4',
+                iconPosition: 'left'
             }),
             badge({
                 text: 'Alert',
                 color: 'warning',
                 variant: 'outline',
                 pill: true,
-                iconLeft: 'icon-[tabler--alert-triangle] size-4'
+                icon: 'icon-[tabler--alert-triangle] size-4',
+                iconPosition: 'left'
             }),
             badge({
                 text: 'Info',
                 color: 'info',
                 variant: 'ghost',
-                iconRight: 'icon-[tabler--info-circle] size-4'
+                icon: 'icon-[tabler--info-circle] size-4',
+                iconPosition: 'right'
             }),
             badge({
                 text: '',
@@ -161,7 +167,8 @@ export const DotAndIcons: Story = {
                 variant: 'solid',
                 dot: true,
                 pill: true,
-                iconLeft: 'icon-[tabler--bell] size-4'
+                icon: 'icon-[tabler--bell] size-4',
+                iconPosition: 'left'
             })
         ]);
     }
@@ -202,7 +209,8 @@ export const InToolbarLikeRow: Story = {
                     size: 'sm',
                     pill: false,
                     dot: true,
-                    iconLeft: 'icon-[tabler--flask] size-4'
+                    icon: 'icon-[tabler--flask] size-4',
+                    iconPosition: 'left'
                 })
             ]
         });

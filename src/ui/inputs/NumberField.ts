@@ -1,6 +1,7 @@
 // src/ui/inputs/NumberField.ts
 import {BaseInput, type BaseInputProps, type BaseInputState} from './BaseInput';
 import type {ComponentConfig} from '../Component';
+import { mergeSchemas } from '../schemaUtils';
 
 export interface NumberFieldState {
     min?: number | null;
@@ -9,12 +10,14 @@ export interface NumberFieldState {
 }
 
 export class NumberField extends BaseInput<number, NumberFieldState> {
-    protected override extraInitialState(): NumberFieldState {
-        return {
-            min: null,
-            max: null,
-            step: null
-        } satisfies NumberFieldState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                min: { type: ['number', 'null'], default: null },
+                max: { type: ['number', 'null'], default: null },
+                step: { type: ['number', 'null'], default: null }
+            }
+        });
     }
 
     protected inputType(): string {

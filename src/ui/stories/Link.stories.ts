@@ -22,8 +22,11 @@ const meta = {
             control: {type: 'select'},
             options: ['default', 'primary', 'secondary', 'accent', 'neutral', 'info', 'success', 'warning', 'error']
         },
-        iconLeft: {control: 'text'},
-        iconRight: {control: 'text'},
+        icon: {control: 'text'},
+        iconPosition: {
+            control: {type: 'inline-radio'},
+            options: ['left', 'right']
+        },
         target: {control: 'text'},
         rel: {control: 'text'},
         download: {control: 'text'},
@@ -37,8 +40,8 @@ const meta = {
         disabled: false,
         decoration: 'always',
         color: 'primary',
-        iconLeft: null,
-        iconRight: 'icon-[tabler--arrow-up-right] size-4',
+        icon: 'icon-[tabler--arrow-up-right] size-4',
+        iconPosition: 'right',
         target: '_blank',
         rel: 'noopener noreferrer'
     }
@@ -80,23 +83,18 @@ export const WithIcons: Story = {
         const leading = link({
             text: 'Back',
             href: '#',
-            iconLeft: 'icon-[tabler--arrow-left] size-4',
+            icon: 'icon-[tabler--arrow-left] size-4',
+            iconPosition: 'left',
             decoration: 'hover'
         });
         const trailing = link({
             text: 'Continue',
             href: '#',
-            iconRight: 'icon-[tabler--arrow-right] size-4',
+            icon: 'icon-[tabler--arrow-right] size-4',
+            iconPosition: 'right',
             decoration: 'hover'
         });
-        const both = link({
-            text: 'Docs',
-            href: 'https://flyonui.com/docs',
-            iconLeft: 'icon-[tabler--book] size-4',
-            iconRight: 'icon-[tabler--arrow-up-right] size-4',
-            decoration: 'animated'
-        });
-        [leading, trailing, both].forEach((cmp) => wrap.appendChild(mountComponent(cmp)));
+        [leading, trailing].forEach((cmp) => wrap.appendChild(mountComponent(cmp)));
         return wrap;
     }
 };

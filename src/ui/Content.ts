@@ -5,7 +5,6 @@ import {
     Component,
     type ComponentConfig,
     type ComponentProps,
-    type ComponentState,
 } from './Component';
 import type { State } from '../state/State';
 
@@ -35,10 +34,6 @@ export class Content extends Component<ContentState, ContentProps> {
     private _cachedRaw?: string;
     private _cachedSanRef?: ContentProps['sanitize'];
     private _cachedNodes: Node[] = [];
-
-    protected override initialState(): ContentState {
-        return { ...(super.initialState() as ComponentState) };
-    }
 
     protected override view() {
         const p = this.props();

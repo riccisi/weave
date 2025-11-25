@@ -1,6 +1,7 @@
 import {html} from 'uhtml';
 import {Container, type ContainerProps, type ContainerState} from './Container';
 import {Component, type ComponentConfig} from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 /**
  * Reactive state driving {@link Drawer} visibility and placement.
@@ -47,16 +48,17 @@ export class Drawer extends Container<DrawerState, DrawerProps> {
         this._boundBackdropClick = (ev) => this.onBackdropClick(ev);
     }
 
-    protected override initialState(): DrawerState {
-        return {
-            ...(super.initialState() as ContainerState),
-            open: false,
-            placement: 'left',
-            backdrop: false,
-            closeOnEsc: true,
-            closeOnBackdrop: true,
-            width: null
-        } satisfies DrawerState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                open: { type: 'boolean', default: false },
+                placement: { type: 'string', enum: ['left', 'right'], default: 'left' },
+                backdrop: { type: 'boolean', default: false },
+                closeOnEsc: { type: 'boolean', default: true },
+                closeOnBackdrop: { type: 'boolean', default: true },
+                width: { type: ['string', 'null'], default: null }
+            }
+        });
     }
 
     protected override hostTag(): string {

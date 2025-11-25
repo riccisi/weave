@@ -2,6 +2,7 @@ import {html} from 'uhtml';
 import {InteractiveComponent, InteractiveComponentState} from './InteractiveComponent';
 import type {ComponentConfig, ComponentProps} from './Component';
 import type {MenuNode} from './navigation/types';
+import { mergeSchemas } from './schemaUtils';
 
 export interface MenuState extends InteractiveComponentState {
     root: MenuNode | null;
@@ -18,14 +19,20 @@ export interface MenuProps extends ComponentProps {
 export class Menu extends InteractiveComponent<MenuState, MenuProps> {
     static wtype = 'menu';
 
-    protected override initialState(): MenuState {
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                root: { default: null },
+                selection: { default: null },
+                size: { type: 'string', default: 'md' },
+                orientation: { type: 'string', default: 'vertical' }
+            }
+        });
+    }
+
+    protected override initialStateOverrides(): Partial<MenuState> {
         return {
-            ...(super.initialState() as any),
-            root: null,
-            selection: null,
-            expandedIds: new Set<string>(),
-            size: 'md',
-            orientation: 'vertical'
+            expandedIds: new Set<string>()
         };
     }
 

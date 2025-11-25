@@ -4,8 +4,8 @@ import {
     slot,
     type ComponentConfig,
     type ComponentProps,
-    type ComponentState,
 } from './Component';
+import { mergeSchemas } from './schemaUtils';
 import { content, Content, type ContentConfig } from './Content';
 import type { Layout } from './layouts/Layout';
 import { button, type ButtonProps, type ButtonState } from './Button';
@@ -57,19 +57,20 @@ export class Card extends Component<CardState, CardProps> {
     private _actionsLayout?: Layout;
     private _alertChild?: Alert;
 
-    protected override initialState(): CardState {
-        return {
-            ...(super.initialState() as ComponentState),
-            title: null,
-            imageSrc: null,
-            imageAlt: 'Card image',
-            imageFull: false,
-            imagePlacement: 'top',
-            compact: false,
-            glass: false,
-            bordered: false,
-            size: 'md',
-        } satisfies CardState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                title: { type: ['string', 'null'], default: null },
+                imageSrc: { type: ['string', 'null'], default: null },
+                imageAlt: { type: ['string', 'null'], default: 'Card image' },
+                imagePlacement: { type: 'string', default: 'top' },
+                imageFull: { type: 'boolean', default: false },
+                compact: { type: 'boolean', default: false },
+                glass: { type: 'boolean', default: false },
+                bordered: { type: 'boolean', default: false },
+                size: { type: 'string', default: 'md' }
+            }
+        });
     }
 
     protected override afterMount(): void {

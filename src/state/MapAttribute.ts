@@ -40,7 +40,7 @@ export class MapAttribute extends AbstractAttribute<any> {
             return la.get(); // restituisce il Proxy dell'array
         }
         if (v && typeof v === 'object' && !(v instanceof State)) {
-            return new State(v, undefined, this.runtime);
+            return new State(v, { runtime: this.runtime });
         }
         return v;
     }

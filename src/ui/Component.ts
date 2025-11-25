@@ -1,6 +1,7 @@
 // Component.ts
 import { Hole, html, render } from 'uhtml';
-import { State } from '../state/State';
+import { State, type StateOptions } from '../state/State';
+import { mergeSchemas } from './schemaUtils';
 import { ReactiveRuntime } from '../state/ReactiveRuntime';
 import { scheduleFlyonInit } from './flyonBridge';
 import { ComponentDecorator } from './decorators/Decorator';
@@ -39,7 +40,13 @@ export interface ComponentProps {
 export type ComponentConfig<
     S extends ComponentState = ComponentState,
     P extends ComponentProps = ComponentProps
-> = Partial<InitialState<S>> & Partial<Omit<P, 'state'>> & { state?: Record<string, any> };
+> = Partial<InitialState<S>>
+    & Partial<Omit<P, 'state' | 'schema' | 'validators'>>
+    & {
+        state?: Record<string, any>;
+        schema?: Record<string, any>;
+        validators?: Record<string, (value: any, state: State & S) => string | void>;
+    };
 
 export abstract class Component<
     S extends ComponentState = ComponentState,
@@ -96,8 +103,30 @@ export abstract class Component<
 
     // ---- lifecycle overridable ------------------------------------------------
 
-    protected initialState(): S {
-        return { hidden: false, hiddenInert: false } as S;
+    protected schema(): Record<string, any> {
+        return {
+            type: 'object',
+            properties: {
+                hidden: { type: 'boolean', default: false },
+                hiddenInert: { type: 'boolean', default: false },
+            }
+        };
+    }
+
+    protected validators(): Record<string, (value: any, state: State & S) => string | void> | undefined {
+        return undefined;
+    }
+
+    protected initialStateOverrides(): Partial<S> {
+        return {} as Partial<S>;
+    }
+
+    protected stateOptions(): StateOptions<S> | undefined {
+        return undefined;
+    }
+
+    protected initialConfig(): ComponentConfig<S, P> {
+        return this._incomingConfig;
     }
 
     /** Deve produrre SEMPRE un singolo elemento root. */
@@ -179,6 +208,8 @@ export abstract class Component<
         this._depUnsubs = [];
         for (const off of this._unsubs) off();
         this._unsubs = [];
+
+        this._state?.dispose?.();
 
         // Stacca dal DOM
         if (this._host?.parentElement) this._host.parentElement.removeChild(this._host);
@@ -294,8 +325,14 @@ export abstract class Component<
     }
 
     private preparePropsAndState(): void {
-        const base = this.initialState();
-        const { stateOverrides, props, userState } = this.splitOptions(this._incomingConfig, base);
+        const baseOverrides = this.initialStateOverrides();
+        const schema = this.schema();
+        const stateKeys = new Set<string>(Object.keys(baseOverrides ?? {}));
+        if (schema?.properties) {
+            for (const key of Object.keys(schema.properties)) stateKeys.add(key);
+        }
+
+        const { stateOverrides, props, userState, schema: userSchema, validators: userValidators } = this.splitOptions(this._incomingConfig, stateKeys);
         this._props = props;
 
         // Cache class tokens & static attrs: props sono immutabili post-mount
@@ -307,8 +344,24 @@ export abstract class Component<
         const decoBag = this.buildDecoratorInitialBag(this._decorators);
 
         const runtime: ReactiveRuntime | undefined = (this._parentState as any)?._runtime;
-        const initial = { ...base, ...decoBag, ...userState, ...stateOverrides };
-        this._state = new State(initial, this._parentState, runtime) as State & S;
+        const initial = { ...baseOverrides, ...decoBag, ...userState, ...stateOverrides };
+        const baseSchema = this.schema();
+        const baseValidators = this.validators();
+        const stateOpts = this.stateOptions() ?? {};
+        const { schema: extraSchema, validators: extraValidators, ...restStateOpts } = stateOpts;
+
+        const mergedSchema = this.mergeSchemas(this.mergeSchemas(baseSchema, extraSchema), userSchema);
+        const mergedValidators = this.mergeValidators(
+            this.mergeValidators(baseValidators, extraValidators),
+            userValidators
+        );
+        this._state = new State(initial, {
+            parent: this._parentState,
+            runtime,
+            ...restStateOpts,
+            schema: mergedSchema,
+            validators: mergedValidators
+        }) as State & S;
     }
 
     // ---- decorator helpers ----------------------------------------------------
@@ -409,12 +462,13 @@ export abstract class Component<
 
     protected splitOptions(
         incoming: ComponentConfig<S, P>,
-        baseState: S
-    ): { stateOverrides: Partial<S>; userState: Record<string, any>; props: P } {
-        const stateKeys = new Set(Object.keys(baseState ?? {}));
+        stateKeys: Set<string>
+    ): { stateOverrides: Partial<S>; userState: Record<string, any>; props: P; schema?: Record<string, any>; validators?: Record<string, (value: any, state: State & S) => string | void> } {
         const stateOverrides: Record<string, any> = {};
         const propsResult: Record<string, any> = {};
         const userStateResult: Record<string, any> = {};
+        let userSchema: Record<string, any> | undefined;
+        let userValidators: Record<string, (value: any, state: State & S) => string | void> | undefined;
 
         const custom = (incoming as any)?.state;
         if (custom && typeof custom === 'object') {
@@ -422,14 +476,37 @@ export abstract class Component<
         }
         for (const [k, v] of Object.entries(incoming ?? {})) {
             if (k === 'state') continue;
+            if (k === 'validators') {
+                if (v && typeof v === 'object') userValidators = v as any;
+                continue;
+            }
+            if (k === 'schema') {
+                if (v && typeof v === 'object') userSchema = v as Record<string, any>;
+                continue;
+            }
             if (stateKeys.has(k)) stateOverrides[k] = v;
             else propsResult[k] = v;
         }
         return {
             stateOverrides: stateOverrides as Partial<S>,
             userState: userStateResult,
-            props: propsResult as P
+            props: propsResult as P,
+            schema: userSchema,
+            validators: userValidators
         };
+    }
+
+    private mergeSchemas(base?: Record<string, any>, extra?: Record<string, any>): Record<string, any> | undefined {
+        if (base && extra) return mergeSchemas(base, extra);
+        return extra ?? base;
+    }
+
+    private mergeValidators(
+        base?: Record<string, (value: any, state: State & S) => string | void>,
+        extra?: Record<string, (value: any, state: State & S) => string | void>
+    ): Record<string, (value: any, state: State & S) => string | void> | undefined {
+        if (!base && !extra) return undefined;
+        return { ...(base ?? {}), ...(extra ?? {}) };
     }
 
     protected resolveComponentId(config: Record<string, any>): string {

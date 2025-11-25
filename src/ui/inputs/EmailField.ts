@@ -1,13 +1,15 @@
 import {TextField, type TextFieldState} from './TextField';
 import type {ComponentConfig} from '../Component';
 import type {BaseInputProps, BaseInputState} from './BaseInput';
+import { mergeSchemas } from '../schemaUtils';
 
 export class EmailField extends TextField {
-    protected override extraInitialState(): TextFieldState {
-        return {
-            ...super.extraInitialState(),
-            spellcheck: false
-        } satisfies TextFieldState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                spellcheck: { type: ['boolean', 'null'], default: false }
+            }
+        });
     }
 
     protected override inputType(): string {

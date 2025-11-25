@@ -2,10 +2,15 @@
 import { html } from 'uhtml';
 import { describe, it, expect } from 'vitest';
 import { Component, type ComponentState, type ComponentProps } from '../src/ui/Component';
+import { mergeSchemas } from '../src/ui/schemaUtils';
 
 class Hello extends Component<ComponentState & { label: string }, ComponentProps> {
-    protected initialState() {
-        return { ...super.initialState(), label: 'A' };
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                label: { type: 'string', default: 'A' }
+            }
+        });
     }
     protected view() {
         const s = this.state();

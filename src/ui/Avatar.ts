@@ -1,5 +1,6 @@
 import { html } from 'uhtml';
-import { Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
+import { Component, type ComponentConfig, type ComponentProps } from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 type AvatarShape =
@@ -46,26 +47,23 @@ export interface AvatarProps extends ComponentProps {
 
 export class Avatar extends Component<AvatarState, AvatarProps> {
 
-    protected override initialState(): AvatarState {
-        return {
-            ...(super.initialState() as ComponentState),
-
-            src: null,
-            alt: 'Avatar',
-            initials: null,
-            placeholderIcon: null,
-
-            size: 'md',
-            shape: 'circle',
-
-            ring: false,
-            ringColor: null,
-            ringOffset: 'ring-offset-base-100',
-            ringOffsetSize: 2,
-
-            bgClass: 'bg-base-300',
-            textClass: 'text-base-content'
-        } satisfies AvatarState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                src: { type: ['string', 'null'], default: null },
+                alt: { type: 'string', default: 'Avatar' },
+                initials: { type: ['string', 'null'], default: null },
+                placeholderIcon: { type: ['string', 'null'], default: null },
+                size: { type: 'string', default: 'md' },
+                shape: { type: 'string', default: 'circle' },
+                ring: { type: 'boolean', default: false },
+                ringColor: { type: ['string', 'null'], default: null },
+                ringOffset: { type: ['string', 'null'], default: 'ring-offset-base-100' },
+                ringOffsetSize: { type: ['number', 'null'], default: 2 },
+                bgClass: { type: ['string', 'null'], default: 'bg-base-300' },
+                textClass: { type: ['string', 'null'], default: 'text-base-content' }
+            }
+        });
     }
 
     protected override view() {

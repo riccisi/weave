@@ -1,6 +1,8 @@
 // src/ui/Badge.ts
 import { html } from 'uhtml';
-import { Component, type ComponentConfig, type ComponentProps, type ComponentState } from './Component';
+import { Component, type ComponentConfig, type ComponentProps } from './Component';
+import { icon, type Icon } from './Icon';
+import { mergeSchemas } from './schemaUtils';
 
 /** Toni semantici supportati da FlyonUI */
 export type BadgeColor =
@@ -27,8 +29,8 @@ export interface BadgeState extends ComponentState {
     size: BadgeSize;
     pill: boolean;
     dot: boolean;
-    iconLeft: string | null;
-    iconRight: string | null;
+    icon: string | null;
+    iconPosition: 'left' | 'right';
 }
 
 /** Props non-reattive (estese in futuro se serve) */
@@ -48,19 +50,39 @@ const COLOR_CLASS: Record<BadgeColor, string | null> = {
 
 export class Badge extends Component<BadgeState, BadgeProps> {
     public static readonly displayName = 'Badge';
+    private _icon?: Icon;
+    private _iconMountedSide: 'left' | 'right' | null = null;
 
-    protected override initialState(): BadgeState {
-        return {
-            ...(super.initialState() as ComponentState),
-            text: 'Badge',
-            color: 'default',
-            variant: 'solid',
-            size: 'md',
-            pill: false,
-            dot: false,
-            iconLeft: null,
-            iconRight: null,
-        };
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                text: { type: 'string', default: 'Badge' },
+                color: { type: 'string', default: 'default' },
+                variant: { type: 'string', default: 'solid' },
+                size: { type: 'string', default: 'md' },
+                pill: { type: 'boolean', default: false },
+                dot: { type: 'boolean', default: false },
+                icon: { type: ['string', 'null'], default: null },
+                iconPosition: { type: 'string', enum: ['left', 'right'], default: 'left' }
+            }
+        });
+    }
+
+    protected override afterMount(): void {
+        super.afterMount();
+        const s = this.state();
+        this._unsubs.push(
+            s.on('icon', () => this.syncIcon(), { immediate: false }),
+            s.on('iconPosition', () => this.syncIcon(), { immediate: false }),
+        );
+        this.syncIcon();
+    }
+
+    protected override beforeUnmount(): void {
+        this._icon?.unmount();
+        this._icon = undefined;
+        this._iconMountedSide = null;
+        super.beforeUnmount();
     }
 
     /** Rende un unico root `<span>` con tutte le classi già pronte */
@@ -90,14 +112,40 @@ export class Badge extends Component<BadgeState, BadgeProps> {
         if (p.className) cls.push(p.className);
 
         // contenuto interno: icone + testo
-        const leftIcon  = s.iconLeft  ? html`<span class=${s.iconLeft}></span>`   : null;
-        const rightIcon = s.iconRight ? html`<span class=${s.iconRight}></span>`  : null;
         const textNode  = s.text ? html`${s.text}` : null;
 
         return html`
         <span class=${cls.join(' ')}>
-             ${leftIcon} ${textNode} ${rightIcon}
+             <span data-slot="icon-left" style="display: contents"></span>
+             ${textNode}
+             <span data-slot="icon-right" style="display: contents"></span>
         </span>`;
+    }
+
+    private syncIcon(): void {
+        const s = this.state();
+        const val = s.icon;
+        const side = s.iconPosition ?? 'left';
+        const slotName = side === 'right' ? 'icon-right' : 'icon-left';
+
+        if (val) {
+            if (!this._icon) {
+                this._icon = icon({ icon: val, sizeClass: 'size-4' });
+                this._icon.mount(this.slotEl(slotName), this);
+                this._iconMountedSide = side;
+            } else {
+                if (this._iconMountedSide !== side) {
+                    this._icon.unmount();
+                    this._icon.mount(this.slotEl(slotName), this);
+                    this._iconMountedSide = side;
+                }
+                this._icon.state().icon = val;
+            }
+        } else if (this._icon) {
+            this._icon.unmount();
+            this._icon = undefined;
+            this._iconMountedSide = null;
+        }
     }
 }
 

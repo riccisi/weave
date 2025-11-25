@@ -1,5 +1,5 @@
 import {AbstractAttribute} from './AbstractAttribute';
-import {State} from './State';
+import {State, type StateSchemaHandle} from './State';
 
 /**
  * Represents a list attribute that maintains reactivity and ensures immutability
@@ -25,7 +25,7 @@ export class ListAttribute<T = any> extends AbstractAttribute<T[]> {
     private items: any[];
     private proxyArr?: any[];
 
-    constructor(key: string, rt: any, initial: any[]) {
+    constructor(key: string, rt: any, initial: any[], private itemSchema?: StateSchemaHandle) {
         super(key, rt);
         this.items = initial.map(v => this.wrap(v));
     }
@@ -33,7 +33,8 @@ export class ListAttribute<T = any> extends AbstractAttribute<T[]> {
     /** Wrap plain objects into State to keep deep reactivity for list elements. */
     private wrap(v: any): any {
         if (v && typeof v === 'object' && !(v instanceof State)) {
-            return new State(v, undefined, this.runtime);
+            const schemaOptions = this.itemSchema?.stateOptions();
+            return new State(v, { ...(schemaOptions ?? {}), runtime: this.runtime });
         }
         return v;
     }

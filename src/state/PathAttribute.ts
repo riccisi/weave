@@ -61,6 +61,12 @@ export class PathAttribute<T = any> extends AbstractAttribute<T> {
 
     set(v: T): void {
         const {final} = PathResolver.resolve(this.owner, this.path);
+        const owner = (final as any).__ownerState;
+        const key = (final as any).__ownerKey;
+        if (owner && typeof owner.__acceptChildWrite === 'function' && typeof key === 'string') {
+            owner.__acceptChildWrite(key, v);
+            return;
+        }
         final.set(v as any);
     }
 

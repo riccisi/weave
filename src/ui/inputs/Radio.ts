@@ -9,6 +9,7 @@ import {
     type InputSize
 } from './BaseInput';
 import {ChoiceInput, type ChoiceState} from './ChoiceInput';
+import { mergeSchemas } from '../schemaUtils';
 
 export type RadioColor =
     | 'default' | 'primary' | 'secondary' | 'accent'
@@ -50,12 +51,14 @@ export class Radio extends ChoiceInput<RadioState> {
         return [];
     }
 
-    protected override extraInitialState(): RadioState {
-        return {
-            color: 'default',
-            variant: 'default',
-            labelPlacement: 'right'
-        } satisfies RadioState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                color: { type: 'string', default: 'default' },
+                variant: { type: 'string', default: 'default' },
+                labelPlacement: { type: 'string', default: 'right' }
+            }
+        });
     }
 
     protected override beforeMount(): void {

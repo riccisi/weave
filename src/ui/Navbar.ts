@@ -2,6 +2,7 @@ import {html} from 'uhtml';
 import {Container, container, type ContainerProps, type ContainerState} from './Container';
 import {Component, type ComponentConfig} from './Component';
 import {flexLayout} from './layouts/FlexLayout';
+import { mergeSchemas } from './schemaUtils';
 
 /**
  * Reactive state driving {@link Navbar} presentation.
@@ -39,14 +40,15 @@ export class Navbar extends Container<NavbarState, NavbarProps> {
     private _centerSlot!: Container;
     private _rightSlot!: Container;
 
-    protected override initialState(): NavbarState {
-        return {
-            ...(super.initialState() as ContainerState),
-            sticky: false,
-            shadow: false,
-            transparent: false,
-            dense: false
-        } satisfies NavbarState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                sticky: { type: 'boolean', default: false },
+                shadow: { type: 'boolean', default: false },
+                transparent: { type: 'boolean', default: false },
+                dense: { type: 'boolean', default: false }
+            }
+        });
     }
 
     protected override hostTag(): string {

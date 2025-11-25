@@ -16,16 +16,28 @@ import {checkbox} from "@ui/inputs/Checkbox";
 import {radio} from "@ui/inputs/Radio";
 import {content} from "@ui/Content";
 import {avatarGroup} from "@ui/AvatarGroup";
+import {dropdown} from "@ui/Dropdown";
+import {link} from "@ui/Link";
 
 const s = new State({
     text: "Example",
     loading: false,
-    valid: (st: State) => st.text.length > 3,
     icon: "adjustments-code",
-    todos: ["a","b","c"]
+    todos: ["a","b","c"],
+    valid: true
+}, {
+    schema: {
+        type: "object",
+        required: ['text'],
+        properties: {
+            text: { type: 'string', minLength: 3 }
+        }
+    },
+    validateOnWrite: true
 });
 
 s.on("loading", (v) => console.log("loading changed to", v), { immediate: false });
+s.onValidationChange(evt => { console.log("Error?", evt); s.valid = evt.valid; })
 
 let c = container({
     layout: flexLayout({ direction: "row", gap: "1rem", align: "end" }),
@@ -40,14 +52,17 @@ let c = container({
                 items: [
                     (s) => html`<p>Ciao, questo è reattivo! <b>${s.text}</b></p>`,
                     (s) => html`<li>${s.todos.map((t) => html`<li>${t}</li>`)}</li>`,
-                    textfield({ label: "Text field", labelMode: "inline", value: "{text}", valid: "{valid}",decorators: [
+                    textfield({
+                        label: "Text field",
+                        labelMode: "inline",
+                        value: "{text}",
+                        decorators: [
                             indicator({
                                 active: "{!valid}",
-                                //content: badge({ color:"error", text: "ciao",  })
                                 content: status({ color: "error", animation: "ping" })
                             })
-                        ] }),
-                    checkbox({ label: "Check box"}),
+                        ]}),
+                    checkbox({ label: "Check box", value: "{valid}" }),
                     radio({ label: "Radio"})
                 ]
             }),
@@ -72,7 +87,7 @@ let c = container({
             ]
         }),
         status({ color: "error", animation: "pulse" }),
-        badge({color: "error", text: "test"}),
+        badge({color: "error", text: "test", icon: "accessible" }),
         icon({ icon: "{icon}", className: "color-green" }),
         avatar({
             src: "https://cdn.flyonui.com/fy-assets/avatar/avatar-1.png",
@@ -93,7 +108,12 @@ let c = container({
                 avatar("https://cdn.flyonui.com/fy-assets/avatar/avatar-1.png"),
                 avatar("https://cdn.flyonui.com/fy-assets/avatar/avatar-2.png")
             ]
-        })
+        }),
+        link({ text: "Il mio bel link" }),
+        dropdown({ items: [
+            { type: "link", text: "Item 1" },
+            { type: "link", text: "Item 2" }
+        ]})
     ]
 });
 

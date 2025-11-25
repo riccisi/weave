@@ -1,8 +1,10 @@
 // src/ui/Link.ts
 import { html } from 'uhtml';
 import { type ComponentConfig, type ComponentProps } from './Component';
-import { InteractiveComponent, type InteractiveComponentState } from './InteractiveComponent';
+import { InteractiveComponent } from './InteractiveComponent';
 import { FlyonColorClasses, type FlyonLinkColor } from './tokens';
+import { icon, type Icon } from './Icon';
+import { mergeSchemas } from './schemaUtils';
 
 export type LinkDecoration = 'always' | 'hover' | 'animated';
 
@@ -11,8 +13,8 @@ export interface LinkState extends InteractiveComponentState {
     href: string | null;
     color: FlyonLinkColor;
     decoration: LinkDecoration;
-    iconLeft: string | null;
-    iconRight: string | null;
+    icon: string | null;
+    iconPosition: 'left' | 'right';
 }
 
 export interface LinkProps extends ComponentProps {
@@ -24,16 +26,20 @@ export interface LinkProps extends ComponentProps {
 }
 
 export class Link extends InteractiveComponent<LinkState, LinkProps> {
-    protected override initialState(): LinkState {
-        return {
-            ...(super.initialState() as InteractiveComponentState),
-            text: 'Link',
-            href: '#',
-            color: 'primary',
-            decoration: 'always',
-            iconLeft: null,
-            iconRight: null,
-        } satisfies LinkState;
+    private _icon?: Icon;
+    private _iconMountedSide: 'left' | 'right' | null = null;
+
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                text: { type: 'string', default: 'Link' },
+                href: { type: ['string', 'null'], default: '#' },
+                color: { type: 'string', default: 'primary' },
+                decoration: { type: 'string', default: 'always' },
+                icon: { type: ['string', 'null'], default: null },
+                iconPosition: { type: 'string', enum: ['left', 'right'], default: 'left' }
+            }
+        });
     }
 
     /** Riflette subito lo stato disabled (anche se forzato dal parent). */
@@ -71,7 +77,7 @@ export class Link extends InteractiveComponent<LinkState, LinkProps> {
         const colorCls = FlyonColorClasses.link(s.color);
         if (colorCls) cls.push(colorCls);
 
-        if (s.iconLeft || s.iconRight) {
+        if (s.icon) {
             cls.push('inline-flex', 'items-center', 'gap-1.5');
         }
 
@@ -99,10 +105,53 @@ export class Link extends InteractiveComponent<LinkState, LinkProps> {
           aria-label=${ariaLabel ?? null}
           onclick=${onClick}
         >
-          ${s.iconLeft ? html`<span class=${s.iconLeft}></span>` : null}
+          <span data-slot="icon-left" style="display: contents"></span>
           ${s.text ? html`${s.text}` : null}
-          ${s.iconRight ? html`<span class=${s.iconRight}></span>` : null}
+          <span data-slot="icon-right" style="display: contents"></span>
         </a>`;
+    }
+
+    protected override afterMount(): void {
+        super.afterMount();
+        const s = this.state();
+        this._unsubs.push(
+            s.on('icon', () => this.syncIcon(), { immediate: false }),
+            s.on('iconPosition', () => this.syncIcon(), { immediate: false }),
+        );
+        this.syncIcon();
+    }
+
+    protected override beforeUnmount(): void {
+        this._icon?.unmount();
+        this._icon = undefined;
+        this._iconMountedSide = null;
+        super.beforeUnmount();
+    }
+
+    private syncIcon(): void {
+        const s = this.state();
+        const val = s.icon;
+        const side = s.iconPosition ?? 'left';
+        const slotName = side === 'right' ? 'icon-right' : 'icon-left';
+
+        if (val) {
+            if (!this._icon) {
+                this._icon = icon({ state: { icon: val }, sizeClass: 'size-4' });
+                this._icon.mount(this.slotEl(slotName), this);
+                this._iconMountedSide = side;
+            } else {
+                if (this._iconMountedSide !== side) {
+                    this._icon.unmount();
+                    this._icon.mount(this.slotEl(slotName), this);
+                    this._iconMountedSide = side;
+                }
+                this._icon.state().icon = val;
+            }
+        } else if (this._icon) {
+            this._icon.unmount();
+            this._icon = undefined;
+            this._iconMountedSide = null;
+        }
     }
 }
 

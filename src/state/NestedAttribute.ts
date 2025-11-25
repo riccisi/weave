@@ -1,5 +1,5 @@
 import {AbstractAttribute} from './AbstractAttribute';
-import {State} from './State';
+import {State, type StateSchemaHandle} from './State';
 
 /**
  * Class representing a nested attribute that manages an internal state.
@@ -11,10 +11,15 @@ export class NestedAttribute extends AbstractAttribute<State> {
     private inner: State;
     private parent?: State;
 
-    constructor(key: string, rt: any, initial: Record<string, any>, parent?: State) {
+    constructor(key: string, rt: any, initial: Record<string, any>, parent?: State, private schema?: StateSchemaHandle) {
         super(key, rt);
         this.parent = parent;
-        this.inner = new State(initial, parent, this.runtime);
+        const schemaOptions = this.schema?.stateOptions();
+        this.inner = new State(initial, {
+            parent,
+            runtime: this.runtime,
+            ...(schemaOptions ?? {})
+        });
     }
 
     get(): State {
@@ -23,11 +28,19 @@ export class NestedAttribute extends AbstractAttribute<State> {
     }
 
     set(v: any): void {
-        if (v && typeof v === 'object') {
-            this.inner = v instanceof State ? v : new State(v, this.parent, this.runtime);
-            this.emit();
-        } else {
+        if (!(v && typeof v === 'object')) {
             throw new Error(`Nested '${this.key()}' requires object/State.`);
         }
+        if (v instanceof State) {
+            this.inner = v;
+        } else {
+            const schemaOptions = this.schema?.stateOptions();
+            this.inner = new State(v, {
+                parent: this.parent,
+                runtime: this.runtime,
+                ...(schemaOptions ?? {})
+            });
+        }
+        this.emit();
     }
 }

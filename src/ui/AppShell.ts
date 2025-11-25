@@ -4,6 +4,7 @@ import {Component, type ComponentConfig} from './Component';
 import {flexLayout} from './layouts/FlexLayout';
 import {Drawer, drawer} from './Drawer';
 import type {Navbar} from './Navbar';
+import { mergeSchemas } from './schemaUtils';
 
 /** Reactive state for {@link AppShell}. */
 export interface AppShellState extends ContainerState {
@@ -38,12 +39,13 @@ export class AppShell extends Container<AppShellState, AppShellProps> {
     private _isDesktopViewport = false;
     private readonly _onResize = () => this.handleResize();
 
-    protected override initialState(): AppShellState {
-        return {
-            ...(super.initialState() as ContainerState),
-            sidebarOpen: false,
-            sidebarStatic: true
-        } satisfies AppShellState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                sidebarOpen: { type: 'boolean', default: false },
+                sidebarStatic: { type: 'boolean', default: true }
+            }
+        });
     }
 
     protected override beforeMount(): void {

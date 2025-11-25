@@ -1,5 +1,6 @@
-import {html} from 'uhtml';
-import {Component, type ComponentConfig, type ComponentProps, type ComponentState} from './Component';
+import {html}from 'uhtml';
+import {Component, type ComponentConfig, type ComponentProps} from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 /** Represents a single breadcrumb item. */
 export interface Crumb {
@@ -29,11 +30,12 @@ export interface BreadcrumbsProps extends ComponentProps {
 
 /** Accessible breadcrumb trail implementation. */
 export class Breadcrumbs extends Component<BreadcrumbsState, BreadcrumbsProps> {
-    protected override initialState(): BreadcrumbsState {
-        return {
-            ...(super.initialState() as ComponentState),
-            separator: 'slash'
-        } satisfies BreadcrumbsState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                separator: { type: 'string', default: 'slash' }
+            }
+        });
     }
 
     protected override hostTag(): string {

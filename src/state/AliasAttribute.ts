@@ -17,7 +17,8 @@ export class AliasAttribute<T = any, R = T> extends AbstractAttribute<R> {
         key: string,
         rt: any,
         private resolve: () => Attribute<T>,
-        private mapper?: Mapper<T, R>
+        private mapper?: Mapper<T, R>,
+        private normalize?: (value: any) => any
     ) {
         super(key, rt);
     }
@@ -30,7 +31,10 @@ export class AliasAttribute<T = any, R = T> extends AbstractAttribute<R> {
 
     get(): R {
         this.collect();
-        const tv = this.target().get();
+        let tv = this.target().get();
+        if (this.normalize && !this.mapper) {
+            tv = this.normalize(tv);
+        }
         return this.mapper ? this.mapper.read(tv as T) : (tv as unknown as R);
     }
 
@@ -38,9 +42,9 @@ export class AliasAttribute<T = any, R = T> extends AbstractAttribute<R> {
         const tgt = this.target();
         if (this.mapper) {
             if (!this.mapper.write) throw new Error(`Alias '${this.key()}' is read-only (mapper has no write).`);
-            tgt.set(this.mapper.write(v));
+            this.forwardWrite(tgt, this.mapper.write(v));
         } else {
-            tgt.set(v as unknown as T);
+            this.forwardWrite(tgt, v as unknown as T);
         }
     }
 
@@ -53,5 +57,15 @@ export class AliasAttribute<T = any, R = T> extends AbstractAttribute<R> {
     subscribe(fn: (v: R) => void, opts?: { immediate?: boolean, buffer?: number, delay?: number }) {
         if (!this.mapper) return this.target().subscribe(fn as any, opts);
         return this.target().subscribe((tv) => fn(this.mapper!.read(tv as T)), opts);
+    }
+
+    private forwardWrite(tgt: Attribute<T>, value: T): void {
+        const owner = (tgt as any).__ownerState;
+        const key = (tgt as any).__ownerKey;
+        if (owner && typeof owner.__acceptChildWrite === 'function' && typeof key === 'string') {
+            owner.__acceptChildWrite(key, value);
+            return;
+        }
+        tgt.set(value);
     }
 }

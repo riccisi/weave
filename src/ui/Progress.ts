@@ -1,7 +1,8 @@
 // src/ui/Progress.ts
 import {html} from 'uhtml';
-import {Component, type ComponentConfig, type ComponentProps, type ComponentState} from './Component';
+import {Component, type ComponentConfig, type ComponentProps} from './Component';
 import {FlyonColor, FlyonColorClasses} from './tokens';
+import { mergeSchemas } from './schemaUtils';
 
 type Orientation = 'horizontal' | 'vertical';
 type LabelMode = 'none' | 'inside' | 'end' | 'floating';
@@ -37,23 +38,24 @@ export interface ProgressProps extends ComponentProps {
  * Circular or linear progress indicator with optional labels and tones.
  */
 export class Progress extends Component<ProgressState, ProgressProps> {
-    protected override initialState(): ProgressState {
-        return {
-            ...(super.initialState() as ComponentState),
-            value: 50,
-            min: 0,
-            max: 100,
-            orientation: 'horizontal',
-            color: 'primary',
-            striped: false,
-            animated: false,
-            indeterminate: false,
-            labelMode: 'none',
-            labelText: null,
-            widthClass: 'w-56',
-            heightClass: 'h-56',
-            thicknessClass: null
-        } satisfies ProgressState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                value: { type: ['number', 'null'], default: 50 },
+                min: { type: 'number', default: 0 },
+                max: { type: 'number', default: 100 },
+                orientation: { type: 'string', default: 'horizontal' },
+                color: { type: 'string', default: 'primary' },
+                striped: { type: 'boolean', default: false },
+                animated: { type: 'boolean', default: false },
+                indeterminate: { type: 'boolean', default: false },
+                labelMode: { type: 'string', default: 'none' },
+                labelText: { type: ['string', 'null'], default: null },
+                widthClass: { type: ['string', 'null'], default: 'w-56' },
+                heightClass: { type: ['string', 'null'], default: 'h-56' },
+                thicknessClass: { type: ['string', 'null'], default: null }
+            }
+        });
     }
 
     protected idPrefix(): string {

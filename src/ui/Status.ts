@@ -3,8 +3,8 @@ import {
     Component,
     type ComponentConfig,
     type ComponentProps,
-    type ComponentState,
 } from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 export type StatusColor = 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'neutral' | 'error';
 export type StatusSize = 'xs' | 'sm' | 'md' | 'lg';
@@ -19,13 +19,14 @@ export interface StatusState extends ComponentState {
 export interface StatusProps extends ComponentProps {}
 
 export class Status extends Component<StatusState, StatusProps> {
-    protected override initialState(): StatusState {
-        return {
-            ...(super.initialState() as ComponentState),
-            color: 'success',
-            size: 'md',
-            animation: 'none',
-        };
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                color: { type: 'string', default: 'success' },
+                size: { type: 'string', default: 'md' },
+                animation: { type: 'string', default: 'none' }
+            }
+        });
     }
 
     protected override view() {

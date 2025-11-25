@@ -1,6 +1,9 @@
 import {html, type Hole} from 'uhtml';
-import {InteractiveComponent, type InteractiveComponentState} from '../InteractiveComponent';
+import {InteractiveComponent, InteractiveComponentState} from '../InteractiveComponent';
 import type {ComponentProps} from '../Component';
+import { mergeSchemas } from '../schemaUtils';
+import type { ValidationChangeEvent, State } from '../../state/State';
+import type { ErrorObject } from 'ajv';
 
 export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type LabelMode = 'none' | 'inline' | 'floating';
@@ -24,6 +27,7 @@ export interface BaseInputState<T> extends InteractiveComponentState {
     invalidMessage: string | null;
     validationEnabled: boolean;
     showValidState: boolean;
+    schemaInvalid: boolean;
 }
 
 /**
@@ -80,29 +84,30 @@ export abstract class BaseInput<
     protected _pendingInputAttrs: Record<string, any> = {};
     protected _appliedInputAttrKeys = new Set<string>();
     private _validationUnsub: (() => void) | null = null;
+    private _validationChangeUnsub: (() => void) | null = null;
+    private _boundField: string | null = null;
+    private _boundValidationPath: string | null = null;
 
-    protected override initialState(): BaseInputState<T> & ExtraState {
-        return {
-            ...(super.initialState() as InteractiveComponentState),
-            value: null,
-            readonly: false,
-            required: false,
-            size: 'md',
-            placeholder: null,
-            label: null,
-            labelMode: 'inline',
-            helperText: null,
-            touched: false,
-            valid: null,
-            invalidMessage: null,
-            validationEnabled: true,
-            showValidState: false,
-            ...(this.extraInitialState() as ExtraState)
-        } as BaseInputState<T> & ExtraState;
-    }
-
-    protected extraInitialState(): ExtraState {
-        return {} as ExtraState;
+    protected override schema(): Record<string, any> {
+        const schema = mergeSchemas(super.schema(), {
+            properties: {
+                value: { default: null },
+                readonly: { type: 'boolean', default: false },
+                required: { type: 'boolean', default: false },
+                size: { type: 'string', default: 'md' },
+                placeholder: { type: ['string', 'null'], default: null },
+                label: { type: ['string', 'null'], default: null },
+                labelMode: { type: 'string', default: 'inline' },
+                helperText: { type: ['string', 'null'], default: null },
+                touched: { type: 'boolean', default: false },
+                valid: { type: ['boolean', 'null'], default: null },
+                invalidMessage: { type: ['string', 'null'], default: null },
+                validationEnabled: { type: 'boolean', default: true },
+                showValidState: { type: 'boolean', default: false },
+                schemaInvalid: { type: 'boolean', default: false }
+            }
+        });
+        return schema;
     }
 
     protected abstract inputType(): string;
@@ -170,10 +175,10 @@ export abstract class BaseInput<
         const classes = ['input'];
         if (s.size !== 'md') classes.push(`input-${s.size}`);
         const validationActive = s.validationEnabled !== false;
-        if (validationActive && s.showValidState && s.valid === true) {
+        if (validationActive && s.showValidState && s.valid === true && !s.schemaInvalid) {
             classes.push('is-valid');
         }
-        if (validationActive && s.valid === false) {
+        if (validationActive && (s.valid === false || s.schemaInvalid)) {
             classes.push('is-invalid');
         }
         return classes;
@@ -190,7 +195,7 @@ export abstract class BaseInput<
 
     protected helperContent(): string | null {
         const s = this.state();
-        if (s.valid === false && s.invalidMessage) return s.invalidMessage;
+        if ((s.valid === false || s.schemaInvalid) && s.invalidMessage) return s.invalidMessage;
         return s.helperText ?? null;
     }
 
@@ -223,6 +228,60 @@ export abstract class BaseInput<
         if (validate) this.runValidation();
     }
 
+    private handleValidationChange(evt: ValidationChangeEvent): void {
+        if (!this._boundValidationPath) return;
+        const entry = evt.errors.find(e => e.path === this._boundValidationPath);
+        this.updateSchemaValidationState(entry?.errors);
+    }
+
+    private bindValidationChangeListener(): void {
+        this._validationChangeUnsub?.();
+        this._boundValidationPath = null;
+
+        const { state, path } = this.resolveValidationSource();
+        this._boundValidationPath = path;
+        this._validationChangeUnsub = state.onValidationChange((evt) => this.handleValidationChange(evt));
+        this.applyInitialValidationState(state, path);
+    }
+
+    private resolveValidationSource(): { state: State<any>, path: string } {
+        const bound = this._boundField ?? 'value';
+        const currentState = this.state() as unknown as State<any>;
+        try {
+            if (typeof (currentState as any).attribute === 'function') {
+                const attr = (currentState as any).attribute(bound);
+                const owner = attr?.__ownerState as State<any> | undefined;
+                const key = attr?.__ownerKey as string | undefined;
+                if (owner && key) {
+                    return { state: owner, path: bound };
+                }
+            }
+        } catch {
+            // ignore resolution issues, fall back to component state
+        }
+        return { state: currentState, path: bound };
+    }
+
+    private applyInitialValidationState(state: State<any>, path: string): void {
+        const existing = state.schemaErrors(path);
+        if (Array.isArray(existing) && existing.length > 0) {
+            this.updateSchemaValidationState(existing);
+        } else if (existing === undefined) {
+            this.updateSchemaValidationState(null);
+        }
+    }
+
+    private updateSchemaValidationState(errors?: ErrorObject[] | null): void {
+        const s = this.state();
+        if (errors && errors.length > 0) {
+            s.schemaInvalid = true;
+            s.invalidMessage = errors[0]?.message ?? s.invalidMessage;
+        } else {
+            s.schemaInvalid = false;
+            if (s.valid !== false) s.invalidMessage = null;
+        }
+    }
+
     protected shouldSkipValidation(): boolean {
         return this.state().validationEnabled === false;
     }
@@ -243,12 +302,26 @@ export abstract class BaseInput<
     protected override afterMount(): void {
         super.afterMount();
         this._validationUnsub = this.state().on('validationEnabled', () => this.runValidation(), {immediate: true});
+        this._boundField = this.resolveBoundField();
+        this.bindValidationChangeListener();
     }
 
     protected override beforeUnmount(): void {
         this._validationUnsub?.();
         this._validationUnsub = null;
+        this._validationChangeUnsub?.();
+        this._validationChangeUnsub = null;
         super.beforeUnmount();
+    }
+
+    protected resolveBoundField(): string | null {
+        const cfg: any = this.initialConfig();
+        const binding = cfg?.value ?? cfg?.state?.value;
+        if (typeof binding === 'string' && binding.startsWith('{') && binding.endsWith('}')) {
+            const inner = binding.slice(1, -1).trim();
+            return inner.replace(/^state\./, '');
+        }
+        return 'value';
     }
 
     protected renderContent(ctx: InputViewContext): Hole {

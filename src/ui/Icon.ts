@@ -4,8 +4,8 @@ import {
     Component,
     type ComponentConfig,
     type ComponentProps,
-    type ComponentState,
 } from './Component';
+import { mergeSchemas } from './schemaUtils';
 
 export interface IconState extends ComponentState {
     icon: string | null;
@@ -18,11 +18,12 @@ export interface IconProps extends ComponentProps {
 
 export class Icon extends Component<IconState, IconProps> {
 
-    protected override initialState(): IconState {
-        return {
-            ...(super.initialState() as ComponentState),
-            icon: null,
-        } satisfies IconState;
+    protected override schema(): Record<string, any> {
+        return mergeSchemas(super.schema(), {
+            properties: {
+                icon: { type: ['string', 'null'], default: null }
+            }
+        });
     }
 
     protected override beforeMount(): void {
